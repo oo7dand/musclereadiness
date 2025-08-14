@@ -21,7 +21,7 @@ h1{margin:0;font-size:20px;font-weight:600}
 h2{margin:.2rem 0 .6rem;font-size:18px}
 h3{margin:.15rem 0 .35rem;font-size:16px}
 nav{display:flex;gap:8px;padding:8px 16px;background:#0a1020;position:sticky;top:48px;z-index:5}
-.tab{background:#0f182e;color:#var(--muted);border:1px solid var(--border);padding:8px 12px;border-radius:10px;cursor:pointer;transition:transform .06s ease}
+.tab{background:#0f182e;color:var(--muted);border:1px solid var(--border);padding:8px 12px;border-radius:10px;cursor:pointer;transition:transform .06s ease}
 .tab:hover{transform:translateY(-1px)}
 .tab.active{color:#fff;border-color:#334155;background:#111c32}
 .panel{display:none;padding-top:10px}
@@ -59,15 +59,29 @@ hr.sep{border:0;border-top:1px solid var(--border);margin:12px 0}
 #history .card{padding:8px}
 .note{color:var(--muted);font-size:12px;margin-left:8px}
 @media (max-width:560px){ .row{grid-template-columns:1fr} }
+
+/* Modal styles (for primary exercise list) */
+#ex-modal{ position:fixed; inset:0; display:none; align-items:center; justify-content:center; z-index:9999; }
+#ex-modal.show{ display:flex; }
+#ex-modal .backdrop{ position:absolute; inset:0; background:rgba(0,0,0,.45); }
+#ex-modal .sheet{ position:relative; width:min(720px,92vw); max-height:80vh; overflow:auto;
+  background:#0e1628; border:1px solid #1c2740; border-radius:14px; padding:14px; color:#e8ecf3; }
+#ex-modal h3{ margin:0 0 8px 0; font-size:18px; }
+#ex-modal .muted{ color:#9aa6b2; font-size:12px; margin-bottom:8px; }
+#ex-modal .list{ display:flex; flex-direction:column; gap:8px; }
+#ex-modal .row{ display:grid; grid-template-columns:1fr auto; gap:8px; align-items:center;
+  background:#0f182e; border:1px solid #1c2740; border-radius:10px; padding:10px; }
+#ex-modal .btn{ border:1px solid #2a3a55;background:#182840;color:#e5e7eb;padding:8px 10px;border-radius:9px;cursor:pointer;font-size:13px}
+#ex-modal .btn.ghost{ background:transparent }
 </style>
 </head>
 <body>
 <header><h1>Muscle Cooldown</h1></header>
+
 <nav>
   <button class="tab active" data-tab="train" type="button">Train</button>
   <button class="tab" data-tab="muscles" type="button">Muscles</button>
   <button class="tab" data-tab="exercises" type="button">Exercises</button>
-  <button class="tab" data-tab="data" type="button">Data</button>
 </nav>
 
 <main>
@@ -132,46 +146,33 @@ hr.sep{border:0;border-top:1px solid var(--border);margin:12px 0}
     </form>
     <div id="eList" class="list" style="margin-top:10px"></div>
   </section>
-
-  <section id="data" class="panel">
-    <h2>Settings & Data</h2>
-    <div class="card" style="margin-bottom:10px">
-      <div class="row">
-        <label>Default yellow window (hrs)</label>
-        <input id="setYellowDefault" type="number" min="0" value="20">
-      </div>
-      <div class="row">
-        <label>Stale threshold (days)</label>
-        <input id="setStaleDays" type="number" min="1" value="10">
-      </div>
-      <div class="row">
-        <label>Global exercise logging</label>
-        <select id="globalExerciseMode">
-          <option value="adjust">Adjust remaining by impacts (add hours)</option>
-          <option value="reset">Reset impacted muscles to 'just trained'</option>
-        </select>
-      </div>
-      <button class="btn" id="saveQuick" type="button">Save Settings</button>
-    </div>
-
-    <div class="controls">
-      <button class="btn" id="exportBtn" type="button">Export JSON</button>
-      <label class="btn ghost">Import JSON <input id="importFile" type="file" accept="application/json" hidden></label>
-      <button class="btn" id="wipeBtn" type="button">Wipe</button>
-    </div>
-    <div class="subtle" style="margin-top:6px">Installable PWA. Offline. Saves to this device only.</div>
-  </section>
 </main>
 
+<!-- Primary exercise modal -->
+<div id="ex-modal">
+  <div class="backdrop" data-close></div>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="ex-title">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+      <h3 id="ex-title">Exercises</h3>
+      <button class="btn ghost" data-close type="button">Close</button>
+    </div>
+    <div class="muted" id="ex-sub"></div>
+    <div class="list" id="ex-list"></div>
+  </div>
+</div>
+
 <div id="error"></div>
-<footer><small>v7.2 PWA — icons added to Train & Muscles.</small></footer>
+<footer><small>v7.2 PWA — icons & primary exercise popup</small></footer>
 
 <script>
+/* ---- PWA SW ---- */
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js').catch(()=>{});
   });
 }
+
+/* ---- Utils ---- */
 function showErr(msg){ const e=document.getElementById("error"); e.textContent=msg; e.style.display="block"; setTimeout(()=>{ e.style.display="none"; }, 4000); }
 function clone(o){ try{return JSON.parse(JSON.stringify(o))}catch{return null} }
 const KEY="mct:v7_0"; const uid=()=>Math.random().toString(36).slice(2)+Date.now().toString(36);
@@ -184,352 +185,393 @@ function remMs(m){ if(!m.lastAt) return 0; return (new Date(m.lastAt).getTime()+
 function staleCheck(m){ const ref=m.lastWorkedAt??m.lastAt; if(!ref) return true; const days=(state.settings.staleDays??10); return (Date.now()-new Date(ref).getTime()) >= days*86400000; }
 function colorFor(m){ const remaining=remMs(m); if(remaining>0){ const yh=(m.yellow??state.settings.yellowDefault); if(remaining<=h2ms(yh)) return "yellow"; return "red"; } else { if(staleCheck(m)) return "stale"; return "green"; } }
 function setRemainingMs(m,ms){ const cd=h2ms(m.cooldown); const lastPrime=Date.now()+ms-cd; m.lastAt=new Date(lastPrime).toISOString(); }
-const iconFor=st=> st==="red"?"🔴":st==="yellow"?"🟡":st==="green"?"🟢":"🟩";
-const MUSCLE_SLUG = {"Quads":"quads","Hamstrings":"hamstrings","Glutes":"glutes","Lats":"lats","Chest / Pecs":"chest","Shoulders / Delts":"shoulders","Traps":"traps","Lower back":"lowerback","Upper back":"upperback","Biceps":"biceps","Triceps":"triceps","Abs":"abs","Obliques":"obliques","Calves":"calves","Forearms":"forearms"};
-function iconUrl(name, size=128){ const slug = MUSCLE_SLUG[name] || name.toLowerCase().replace(/\s+/g,'-'); return `./img/muscles/${slug}-${size}.png`; }
-function iconImg(name, size=128){ const img=new Image(); img.className='micon-img'; img.width=24; img.height=24; img.loading='lazy'; img.decoding='async'; img.alt=name; img.src=iconUrl(name, 128); return img; }
 
+/* ---- Icons (inline, exact filenames) ---- */
+const ICON_ROOT='./img/muscles';
+function muscleSlug(name){
+  if(name==="Chest / Pecs") return "chest";
+  if(name==="Shoulders / Delts") return "shoulders";
+  if(name==="Lower back") return "lowerback";
+  if(name==="Upper back") return "upperback"; // add file if you use this muscle
+  return name.toLowerCase().replace(/\s+\/\s+/, ' ').replace(/\s+/g,'-');
+}
+function iconImgByName(name){
+  const i=new Image();
+  i.width=24;i.height=24;i.loading='lazy';i.decoding='async';i.alt=name;
+  i.src=`${ICON_ROOT}/${muscleSlug(name)}-128.png`;
+  i.onerror=()=>{ i.src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQYV2NkYGD4DwABYQF1Q0kRngAAAABJRU5ErkJggg=="; };
+  return i;
+}
+
+/* ---- Spec / Data ---- */
 function buildSpec(){
-  const MUSCLES = [["Quads",48],["Hamstrings",48],["Glutes",48],["Lats",36],["Chest / Pecs",36],["Shoulders / Delts",36],["Traps",36],["Lower back",36],["Biceps",24],["Triceps",24],["Abs",24],["Obliques",24],["Calves",24],["Upper back",24],["Forearms",24]];
+  const MUSCLES = [
+    ["Quads",48],["Hamstrings",48],["Glutes",48],["Lats",36],
+    ["Chest / Pecs",36],["Shoulders / Delts",36],["Traps",36],
+    ["Lower back",36],["Biceps",24],["Triceps",24],
+    ["Abs",24],["Obliques",24],["Calves",24],["Upper back",24]
+  ];
   const mObjs = MUSCLES.map(([name,cd])=>({id:uid(), name, cooldown:cd, yellow:null, lastAt:null, lastWorkedAt:null}));
   const idBy = Object.fromEntries(mObjs.map(m=>[m.name,m.id]));
-  const EX = [["Barbell back squat",[["Quads",48],["Glutes",24],["Hamstrings",24],["Lower back",36],["Abs",12]]],["Leg press",[["Quads",36],["Glutes",24],["Hamstrings",24]]],["Bulgarian split squat",[["Quads",36],["Glutes",24],["Hamstrings",24],["Abs",12]]],["Conventional deadlift",[["Hamstrings",48],["Glutes",24],["Lower back",36],["Traps",36],["Forearms",24],["Abs",12]]],["Romanian deadlift",[["Hamstrings",36],["Glutes",24],["Lower back",36]]],["Leg curl",[["Hamstrings",24],["Calves",12]]],["Barbell hip thrust",[["Glutes",36],["Hamstrings",24],["Quads",24]]],["Pull-up",[["Lats",36],["Biceps",12],["Upper back",24],["Abs",12]]],["Barbell row",[["Lats",36],["Upper back",24],["Shoulders / Delts",12],["Biceps",12],["Lower back",24],["Abs",12],["Forearms",24]]],["Landmine 1-hand row",[["Lats",36],["Biceps",12],["Upper back",24],["Abs",12]]],["Bench press",[["Chest / Pecs",36],["Shoulders / Delts",24],["Triceps",12]]],["Incline bench press",[["Chest / Pecs",36],["Shoulders / Delts",24],["Triceps",12]]],["Dumbbell press",[["Chest / Pecs",36],["Shoulders / Delts",24],["Triceps",12]]],["Seated military press",[["Shoulders / Delts",36],["Traps",36],["Triceps",12],["Chest / Pecs",24]]],["Lateral raise (DB)",[["Shoulders / Delts",24],["Traps",12]]],["Rear delt fly (DB/machine)",[["Shoulders / Delts",24],["Upper back",12],["Traps",12]]],["Barbell shrug",[["Traps",36],["Forearms",24]]],["Upright row",[["Shoulders / Delts",36],["Traps",24],["Biceps",12]]],["Back extension",[["Lower back",36],["Glutes",24],["Hamstrings",24]]],["Good mornings",[["Hamstrings",36],["Lower back",36],["Glutes",24]]],["1-hand preacher curl",[["Biceps",24],["Forearms",24]]],["2-hand preacher curl",[["Biceps",24],["Forearms",24]]],["Hammer curl",[["Biceps",24],["Forearms",24]]],["Landmine triceps press",[["Triceps",24],["Shoulders / Delts",12],["Chest / Pecs",24]]],["Skull crushers",[["Triceps",24],["Forearms",24]]],["Overhead triceps extension",[["Triceps",24],["Shoulders / Delts",12]]],["Hanging leg raise",[["Abs",24],["Obliques",12]]],["Plank",[["Abs",24],["Lower back",24],["Obliques",12],["Shoulders / Delts",12]]],["Russian twist",[["Obliques",24],["Abs",12],["Lower back",24]]],["Side plank",[["Obliques",24],["Abs",12],["Shoulders / Delts",12]]],["Standing calf raise",[["Calves",24]]],["Seated calf raise",[["Calves",24]]],["Face pull (band alt)",[["Shoulders / Delts",24],["Upper back",12],["Traps",12]]],["Reverse fly (DB)",[["Shoulders / Delts",24],["Traps",12],["Upper back",12]]]];
-  const eObjs = EX.map(([name, arr])=>({id:uid(), name, override:"adjust", impacts: arr.map(([n,h])=>({mid:idBy[n], hours:h})).filter(x=>x.mid)}));
+  const EX = [
+    ["Barbell back squat",[["Quads",48],["Glutes",24],["Hamstrings",24],["Lower back",36],["Abs",12]]],
+    ["Leg press",[["Quads",36],["Glutes",24],["Hamstrings",24]]],
+    ["Bulgarian split squat",[["Quads",36],["Glutes",24],["Hamstrings",24],["Abs",12]]],
+    ["Conventional deadlift",[["Hamstrings",48],["Glutes",24],["Lower back",36],["Traps",36],["Abs",12]]],
+    ["Romanian deadlift",[["Hamstrings",36],["Glutes",24],["Lower back",36]]],
+    ["Leg curl",[["Hamstrings",24],["Calves",12]]],
+    ["Barbell hip thrust",[["Glutes",36],["Hamstrings",24],["Quads",24]]],
+    ["Pull-up",[["Lats",36],["Biceps",12],["Upper back",24],["Abs",12]]],
+    ["Barbell row",[["Lats",36],["Upper back",24],["Shoulders / Delts",12],["Biceps",12],["Lower back",24],["Abs",12]]],
+    ["Landmine 1-hand row",[["Lats",36],["Biceps",12],["Upper back",24],["Abs",12]]],
+    ["Bench press",[["Chest / Pecs",36],["Shoulders / Delts",24],["Triceps",12]]],
+    ["Incline bench press",[["Chest / Pecs",36],["Shoulders / Delts",24],["Triceps",12]]],
+    ["Dumbbell press",[["Chest / Pecs",36],["Shoulders / Delts",24],["Triceps",12]]],
+    ["Seated military press",[["Shoulders / Delts",36],["Traps",36],["Triceps",12],["Chest / Pecs",24]]],
+    ["Lateral raise (DB)",[["Shoulders / Delts",24],["Traps",12]]],
+    ["Rear delt fly (DB/machine)",[["Shoulders / Delts",24],["Upper back",12],["Traps",12]]],
+    ["Upright row",[["Shoulders / Delts",36],["Traps",24],["Biceps",12]]],
+    ["Back extension",[["Lower back",36],["Glutes",24],["Hamstrings",24]]],
+    ["Good mornings",[["Hamstrings",36],["Lower back",36],["Glutes",24]]],
+    ["Landmine triceps press",[["Triceps",24],["Shoulders / Delts",12],["Chest / Pecs",24]]],
+    ["Skull crushers",[["Triceps",24]]],
+    ["Overhead triceps extension",[["Triceps",24],["Shoulders / Delts",12]]],
+    ["Hanging leg raise",[["Abs",24],["Obliques",12]]],
+    ["Plank",[["Abs",24],["Lower back",24],["Obliques",12],["Shoulders / Delts",12]]],
+    ["Russian twist",[["Obliques",24],["Abs",12],["Lower back",24]]],
+    ["Side plank",[["Obliques",24],["Abs",12],["Shoulders / Delts",12]]],
+    ["Standing calf raise",[["Calves",24]]],
+    ["Seated calf raise",[["Calves",24]]],
+    ["Face pull (band alt)",[["Shoulders / Delts",24],["Upper back",12],["Traps",12]]],
+    ["Reverse fly (DB)",[["Shoulders / Delts",24],["Traps",12],["Upper back",12]]]
+  ];
+  const eObjs = EX.map(([name, arr])=>({
+    id:uid(), name, override:"adjust",
+    impacts: arr.map(([n,h])=>({mid:idBy[n], hours:h})).filter(x=>x.mid)
+  }));
   return { settings:{yellowDefault:20, staleDays:10, globalExerciseMode:"adjust"}, muscles:mObjs, exercises:eObjs, logs:[] };
 }
-function load(){ try{ const raw=localStorage.getItem(KEY); if(!raw) return buildSpec(); const obj=JSON.parse(raw); if(!obj||!obj.muscles||!obj.exercises) return buildSpec(); obj.muscles.forEach(m=>{ if(m.lastWorkedAt===undefined) m.lastWorkedAt=m.lastAt??null; }); obj.exercises.forEach(e=>{ if('mode' in e) delete e.mode; }); return obj; }catch(e){ return buildSpec(); } }
+
+function load(){
+  try{
+    const raw=localStorage.getItem(KEY);
+    if(!raw) return buildSpec();
+    const obj=JSON.parse(raw);
+    if(!obj||!obj.muscles||!obj.exercises) return buildSpec();
+    obj.muscles.forEach(m=>{ if(m.lastWorkedAt===undefined) m.lastWorkedAt=m.lastAt??null; });
+    obj.exercises.forEach(e=>{ if('mode' in e) delete e.mode; });
+    // Remove Forearms if present (old saves)
+    obj.muscles = obj.muscles.filter(m => m.name !== 'Forearms');
+    const valid = new Set(obj.muscles.map(m=>m.id));
+    obj.exercises.forEach(ex => ex.impacts = (ex.impacts||[]).filter(i => valid.has(i.mid)));
+    return obj;
+  }catch(e){ return buildSpec(); }
+}
 function save(){ try{ localStorage.setItem(KEY, JSON.stringify(state)); } catch(e){ showErr("Save failed: "+e.message); } }
 let state=load();
+
+/* ---- Tabs ---- */
 $$('.tab').forEach(b=>b.addEventListener('click',()=>{
   $$('.tab').forEach(x=>x.classList.remove('active'));
   $$('.panel').forEach(p=>p.classList.remove('active'));
-  b.classList.add('active'); const t=document.getElementById(b.dataset.tab); if(t) t.classList.add('active'); renderAll();
+  b.classList.add('active'); const t=document.getElementById(b.dataset.tab);
+  if(t) t.classList.add('active');
+  renderAll();
 }));
-function readinessOrder(){ const items = state.muscles.map(m=>{ const r=remMs(m); const stale=colorFor(m)==='stale'; return {m,r,stale}; }).sort((a,b)=>{ if(a.stale && !b.stale) return -1; if(!a.stale && b.stale) return 1; if(a.r<=0 && b.r>0) return -1; if(a.r>0 && b.r<=0) return 1; if(a.r!==b.r) return a.r-b.r; return 0; }); return items.map(x=>x.m.id); }
-function renderTrain(){ makeExerciseOptions(); const grid=document.getElementById('cards'); if(!grid) return; grid.innerHTML=''; const order=readinessOrder(); const items=order.map(id=>{ const m=state.muscles.find(x=>x.id===id); return {m,remaining:remMs(m)}; }); for(const {m,remaining} of items){ const st=colorFor(m); const badge=el('span',{class:'badge '+st},[ el('span',{class:'dot',text:iconFor(st)}), el('span',{text: remaining>0? msToDh(remaining):'Ready'}) ]); const clrDisabled=remaining<=0; const iconBox=el('span',{class:'micon'},[ (function(){const i=new Image(); i.width=24;i.height=24;i.loading='lazy';i.decoding='async';i.alt=m.name;i.src= `./img/muscles/${(m.name==='Chest / Pecs'?'chest':m.name.toLowerCase().replace(/\s+\/\s+/, ' ').replace(/\s+/g,'-'))}-128.png`; return i;})() ]); const titleWrap=el('div',{class:'title'},[iconBox, el('h3',{text:m.name})]); const card=el('div',{class:'card'},[ el('div',{class:'slim'},[ titleWrap, el('div',{},[badge]) ]), el('div',{class:'subtle', text:'last: '+agoFromIso(m.lastWorkedAt??m.lastAt)}), el('div',{style:'margin-top:8px;display:flex;gap:8px'},[ el('button',{class:'btn small ghost','data-action':'clear','data-id':m.id,type:'button',...(clrDisabled?{'disabled':true,'aria-disabled':'true'}:{})},['Clear']) ]) ]); grid.appendChild(card);} }
-function exerciseRankTuple(ex, order){ const idxs = ex.impacts.map(i=> order.indexOf(i.mid)).filter(i=>i>=0).sort((a,b)=>a-b); if(!idxs.length) return [9999, 9999, ex.name.toLowerCase()]; return [idxs[0], (idxs[1]??9999), ex.name.toLowerCase()]; }
-function makeExerciseOptions(){ const note=$('#rankNote'); const filter=($('#exerciseFilter')?.value||'').trim().toLowerCase(); const sel=$('#logExerciseNow'); if(!sel) return; sel.innerHTML=''; const order=readinessOrder(); const ranked=state.exercises.map(ex=>({ex,key:exerciseRankTuple(ex,order)})).sort((a,b)=>{ for(let i=0;i<a.key.length;i++){ if(a.key[i]!==b.key[i]) return a.key[i]-b.key[i]; } return 0; }).map(x=>x.ex); const top3 = order.slice(0,3).map(id=>state.muscles.find(m=>m.id===id)?.name).filter(Boolean); if(note) note.textContent = top3.length ? `Ranking by readiness: ${top3.join(' → ')}` : ''; const filtered = filter ? ranked.filter(ex=> ex.name.toLowerCase().includes(filter)) : ranked; filtered.forEach(ex=>{ const opt=document.createElement('option'); opt.value=ex.id; const exIdxs = ex.impacts.map(i=> order.indexOf(i.mid)).filter(i=>i>=0); const bestIdx=Math.min.apply(null, exIdxs.length? exIdxs : [9999]); let tag=''; if(bestIdx!==9999){ const bestMid=order[bestIdx]; const bestMuscle=state.muscles.find(m=>m.id===bestMid)?.name||''; tag=` • targets ${bestMuscle}`; } opt.text = ex.name + tag; sel.appendChild(opt); }); if(!filtered.length){ const opt=document.createElement('option'); opt.value=''; opt.text='No matches'; sel.appendChild(opt);} }
-function renderHistory(){ const list=$('#history'); if(!list) return; list.innerHTML=''; if(state.logs.length===0){ list.appendChild(el('div',{class:'card'},['No history yet.'])); return; } state.logs.slice(0,30).forEach(l=>{ list.appendChild(el('div',{class:'card'},[el('div',{text:l.txt})])); }); }
-function renderMuscles(){ const list=$('#mList'); if(!list) return; list.innerHTML=''; for(const m of state.muscles){ const iconBox=el('span',{class:'micon'},[ (function(){const i=new Image(); i.width=24;i.height=24;i.loading='lazy';i.decoding='async';i.alt=m.name;i.src=`./img/muscles/${(m.name==='Chest / Pecs'?'chest':m.name.toLowerCase().replace(/\s+\/\s+/, ' ').replace(/\s+/g,'-'))}-128.png`; return i;})() ]); list.appendChild(el('div',{class:'item'},[ iconBox, el('div',{},[el('div',{text:m.name}), el('small',{class:'muted',text:`Cooldown ${m.cooldown}h`})]), el('div',{},[ el('button',{class:'btn small','data-m-act':'edit','data-id':m.id,type:'button'},['Edit']), el('button',{class:'btn small ghost',style:'margin-left:6px','data-m-act':'del','data-id':m.id,type:'button'},['Delete']) ]) ])); } }
-document.getElementById('muscles')?.addEventListener('click',(e)=>{ const b=e.target.closest('button'); if(!b) return; const act=b.getAttribute('data-m-act'); const id=b.getAttribute('data-id'); if(!act||!id) return; if(act==='edit'){ const m=state.muscles.find(x=>x.id===id); if(!m) return; document.getElementById('mId').value=m.id; document.getElementById('mName').value=m.name; document.getElementById('mCd').value=m.cooldown; document.getElementById('mYw').value=(m.yellow??''); document.getElementById('mName').focus(); } if(act==='del'){ if(!confirm('Delete muscle?')) return; state.muscles=state.muscles.filter(x=>x.id!==id); state.exercises=state.exercises.map(ex=>({...ex, impacts: ex.impacts.filter(i=>i.mid!==id)})); save(); renderMuscles(); renderTrain(); renderExercises(); } });
-document.getElementById('mCancel')?.addEventListener('click',()=>{ document.getElementById('mForm').reset(); document.getElementById('mId').value=''; });
-document.getElementById('mSave')?.addEventListener('click',()=>{ const id=document.getElementById('mId').value||uid(); const name=document.getElementById('mName').value.trim(); const cd=Number(document.getElementById('mCd').value||0); const ywRaw=document.getElementById('mYw').value; const yw=ywRaw===''?null:Number(ywRaw); if(!name||cd<=0) return alert('Name and cooldown > 0'); const existing=state.muscles.find(x=>x.id===id); const payload= existing? {...existing,name,cooldown:cd,yellow:yw} : {id,name,cooldown:cd,yellow:yw,lastAt:null,lastWorkedAt:null}; state.muscles = existing? state.muscles.map(x=>x.id===id?payload:x) : [...state.muscles,payload]; save(); document.getElementById('mForm').reset(); document.getElementById('mId').value=''; renderMuscles(); renderTrain(); renderExercises(); });
-function renderExercises(){ const box=$('#eMuscles'); if(!box) return; box.innerHTML=''; for(const m of state.muscles){ const row=el('div',{class:'pillrow'},[ el('label',{text:m.name}), el('input',{type:'number',step:'1',min:'0',placeholder:'hours','data-mid':m.id}) ]); box.appendChild(row); } const list=$('#eList'); if(!list) return; list.innerHTML=''; for(const ex of state.exercises){ const desc=ex.impacts.length? ex.impacts.map(i=>{ const nm=state.muscles.find(m=>m.id===i.mid)?.name||'???'; return `${nm}: +${i.hours}h`; }).join(', ') : '—'; const overr=ex.override||'inherit'; const overrLabel=overr==='inherit'?'Inherit global':(overr==='reset'?'Override: Reset':'Override: Adjust'); list.appendChild(el('div',{class:'item'},[ el('div',{},[el('div',{text:ex.name}), el('small',{class:'muted',text:`${overrLabel} • ${desc}`})]), el('div',{},[ el('button',{class:'btn small','data-e-act':'edit','data-id':ex.id,type:'button'},['Edit']), el('button',{class:'btn small ghost',style:'margin-left:6px','data-e-act':'del','data-id':ex.id,type:'button'},['Delete']) ]) ])); } }
-document.getElementById('exercises')?.addEventListener('click',(e)=>{ const b=e.target.closest('button'); if(!b) return; const act=b.getAttribute('data-e-act'); const id=b.getAttribute('data-id'); if(!act||!id) return; if(act==='edit'){ const ex=state.exercises.find(x=>x.id===id); if(!ex) return; document.getElementById('eId').value=ex.id; document.getElementById('eName').value=ex.name; document.getElementById('eOverride').value=ex.override||'inherit'; const map=new Map(ex.impacts.map(i=>[i.mid,i.hours])); $$('#eMuscles input[type=number]').forEach(inp=>{ const mid=inp.getAttribute('data-mid'); inp.value= map.has(mid)?map.get(mid):''; }); document.getElementById('eName').focus(); } if(act==='del'){ if(!confirm('Delete exercise?')) return; state.exercises=state.exercises.filter(x=>x.id!==id); save(); renderExercises(); renderTrain(); } });
-document.getElementById('eCancel')?.addEventListener('click',()=>{ document.getElementById('eForm').reset(); document.getElementById('eId').value=''; $$('#eMuscles input[type=number]').forEach(inp=>inp.value=''); document.getElementById('eOverride').value='inherit'; });
-document.getElementById('eSave')?.addEventListener('click',()=>{ const id=document.getElementById('eId').value||uid(); const name=document.getElementById('eName').value.trim(); const override=document.getElementById('eOverride').value||'inherit'; if(!name) return alert('Exercise name required'); const impacts=$$('#eMuscles input[type=number]').map(inp=>({mid:inp.getAttribute('data-mid'),hours:Number(inp.value||0)})).filter(x=>x.hours>0); const existing=state.exercises.find(x=>x.id===id); const payload= existing? {...existing,name,override,impacts} : {id, name, override, impacts}; state.exercises = existing? state.exercises.map(x=>x.id===id?payload:x) : [payload, ...state.exercises]; save(); renderExercises(); renderTrain(); });
-function renderData(){ document.getElementById('setYellowDefault').value=state.settings.yellowDefault??20; document.getElementById('setStaleDays').value=state.settings.staleDays??10; document.getElementById('globalExerciseMode').value=state.settings.globalExerciseMode||'adjust'; }
-document.getElementById('saveQuick')?.addEventListener('click',()=>{ state.settings.yellowDefault=Math.max(0,Number(document.getElementById('setYellowDefault').value||0)); state.settings.staleDays=Math.max(1,Number(document.getElementById('setStaleDays').value||1)); state.settings.globalExerciseMode=document.getElementById('globalExerciseMode').value||'adjust'; save(); alert('Saved'); });
-document.getElementById('exportBtn')?.addEventListener('click',()=>{ const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='muscle-cooldown.json'; a.click(); URL.revokeObjectURL(url); });
-document.getElementById('importFile')?.addEventListener('change',(e)=>{ const f=e.target.files?.[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{ try{ const obj=JSON.parse(r.result); if(obj&&obj.settings&&obj.muscles&&obj.exercises){ state=obj; save(); renderAll(); alert('Imported'); } else alert('Invalid file'); }catch(err){ alert('Bad JSON'); } }; r.readAsText(f); });
-document.getElementById('wipeBtn')?.addEventListener('click',()=>{ if(confirm('Wipe all data on this device?')){ state=buildSpec(); save(); renderAll(); } });
-function renderAll(){ try{ renderTrain(); renderMuscles(); renderExercises(); renderHistory(); renderData(); } catch(err){ showErr(err.message||String(err)); } }
-renderAll();
-</script>
 
-<script id="icons-loader-v7-2-5">
-(function(){
-  if (window.__iconsPatched) return; window.__iconsPatched = true;
+/* ---- Readiness + UI ---- */
+function readinessOrder(){
+  const items = state.muscles.map(m=>{
+    const r=remMs(m);
+    const stale=colorFor(m)==='stale';
+    return {m,r,stale};
+  }).sort((a,b)=>{
+    if(a.stale && !b.stale) return -1;
+    if(!a.stale && b.stale) return 1;
+    if(a.r<=0 && b.r>0) return -1;
+    if(a.r>0 && b.r<=0) return 1;
+    if(a.r!==b.r) return a.r-b.r;
+    return 0;
+  });
+  return items.map(x=>x.m.id);
+}
+const iconFor=st=> st==="red"?"🔴":st==="yellow"?"🟡":st==="green"?"🟢":"🟩";
 
-  const ASSET_V = '7.2.5';
-  const ROOT = './img/muscles';
-  const PLACEHOLDER =
-    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQYV2NkYGD4DwABYQF1Q0kRngAAAABJRU5ErkJggg==";
-
-  // Exact mapping to your filenames (lowercase, no extra words)
-  const MAP = {
-    "Abs":"abs",
-    "Biceps":"biceps",
-    "Calves":"calves",
-    "Chest / Pecs":"chest",
-    "Glutes":"glutes",
-    "Hamstrings":"hamstrings",
-    "Lats":"lats",
-    "Lower back":"lowerback",
-    "Obliques":"obliques",
-    "Quads":"quads",
-    "Shoulders / Delts":"shoulders",
-    "Traps":"traps",
-    "Triceps":"triceps",
-    "Upper back":"upperback" // only if you add upperback-128.png
-  };
-
-  // Build an <img> for a given UI name
-  function makeIcon(name){
-    const slug = MAP[name];
-    const img = new Image();
-    img.width = 24; img.height = 24; img.alt = name; img.loading = 'lazy'; img.decoding = 'async';
-    img.className = 'micon-img';
-    if (!slug) { img.src = PLACEHOLDER; return img; }
-    const url = `${ROOT}/${slug}-128.png?v=${ASSET_V}`;
-    img.src = url;
-    img.onerror = () => { img.src = PLACEHOLDER; };
-    return img;
+function renderTrain(){
+  makeExerciseOptions();
+  const grid=document.getElementById('cards'); if(!grid) return; grid.innerHTML='';
+  const order=readinessOrder();
+  const items=order.map(id=>{ const m=state.muscles.find(x=>x.id===id); return {m,remaining:remMs(m)}; });
+  for(const {m,remaining} of items){
+    const st=colorFor(m);
+    const badge=el('span',{class:'badge '+st},[
+      el('span',{class:'dot',text:iconFor(st)}),
+      el('span',{text: remaining>0? msToDh(remaining):'Ready'})
+    ]);
+    const clrDisabled=remaining<=0;
+    const iconBox=el('span',{class:'micon'},[
+      (function(){const i=iconImgByName(m.name); return i;})()
+    ]);
+    const titleWrap=el('div',{class:'title'},[iconBox, el('h3',{text:m.name})]);
+    const card=el('div',{class:'card'},[
+      el('div',{class:'slim'},[ titleWrap, el('div',{},[badge]) ]),
+      el('div',{class:'subtle', text:'last: '+agoFromIso(m.lastWorkedAt??m.lastAt)}),
+      el('div',{style:'margin-top:8px;display:flex;gap:8px'},[
+        el('button',{class:'btn small ghost','data-action':'clear','data-id':m.id,type:'button',...(clrDisabled?{'disabled':true,'aria-disabled':'true'}:{})},['Clear'])
+      ])
+    ]);
+    grid.appendChild(card);
   }
+}
 
-  // Minimal styles (only if not already present)
-  if (!document.getElementById('micon-css')) {
-    const style = document.createElement('style'); style.id='micon-css';
-    style.textContent = `.micon{width:28px;height:28px;flex:0 0 28px;border-radius:6px;background:#0f1a2e;display:inline-flex;align-items:center;justify-content:center;overflow:hidden;margin-right:8px}`;
-    document.head.appendChild(style);
+function exerciseRankTuple(ex, order){
+  const idxs = ex.impacts.map(i=> order.indexOf(i.mid)).filter(i=>i>=0).sort((a,b)=>a-b);
+  if(!idxs.length) return [9999, 9999, ex.name.toLowerCase()];
+  return [idxs[0], (idxs[1]??9999), ex.name.toLowerCase()];
+}
+
+function makeExerciseOptions(){
+  const note=$('#rankNote');
+  const filter=($('#exerciseFilter')?.value||'').trim().toLowerCase();
+  const sel=$('#logExerciseNow'); if(!sel) return; sel.innerHTML='';
+  const order=readinessOrder();
+  const ranked=state.exercises.map(ex=>({ex,key:exerciseRankTuple(ex,order)})).sort((a,b)=>{
+    for(let i=0;i<a.key.length;i++){ if(a.key[i]!==b.key[i]) return a.key[i]-b.key[i]; } return 0;
+  }).map(x=>x.ex);
+  const top3 = order.slice(0,3).map(id=>state.muscles.find(m=>m.id===id)?.name).filter(Boolean);
+  if(note) note.textContent = top3.length ? `Ranking by readiness: ${top3.join(' → ')}` : '';
+  const filtered = filter ? ranked.filter(ex=> ex.name.toLowerCase().includes(filter)) : ranked;
+  filtered.forEach(ex=>{
+    const opt=document.createElement('option'); opt.value=ex.id;
+    const exIdxs = ex.impacts.map(i=> order.indexOf(i.mid)).filter(i=>i>=0);
+    const bestIdx=Math.min.apply(null, exIdxs.length? exIdxs : [9999]);
+    let tag='';
+    if(bestIdx!==9999){
+      const bestMid=order[bestIdx];
+      const bestMuscle=state.muscles.find(m=>m.id===bestMid)?.name||'';
+      tag=` • targets ${bestMuscle}`;
+    }
+    opt.text = ex.name + tag;
+    sel.appendChild(opt);
+  });
+  if(!filtered.length){
+    const opt=document.createElement('option'); opt.value=''; opt.text='No matches'; sel.appendChild(opt);
   }
+}
 
-  // Remove Forearms from DOM if it still appears
-  function hideForearmsDom(){
-    document.querySelectorAll('*, * *').forEach(el=>{
-      if (el.childElementCount === 0 && (el.textContent||'').trim() === 'Forearms') {
-        const row = el.closest('.item,.card') || el.parentElement;
-        if (row) row.style.display = 'none';
-      }
+function renderHistory(){
+  const list=$('#history'); if(!list) return; list.innerHTML='';
+  if(state.logs.length===0){
+    list.appendChild(el('div',{class:'card'},['No history yet.']));
+    return;
+  }
+  state.logs.slice(0,30).forEach(l=>{
+    list.appendChild(el('div',{class:'card'},[el('div',{text:l.txt})]));
+  });
+}
+
+function renderMuscles(){
+  const list=$('#mList'); if(!list) return; list.innerHTML='';
+  for(const m of state.muscles){
+    const iconBox=el('span',{class:'micon'},[ iconImgByName(m.name) ]);
+    list.appendChild(el('div',{class:'item'},[
+      iconBox,
+      el('div',{},[ el('div',{text:m.name}), el('small',{class:'muted',text:`Cooldown ${m.cooldown}h`}) ]),
+      el('div',{},[
+        el('button',{class:'btn small','data-m-act':'edit','data-id':m.id,type:'button'},['Edit']),
+        el('button',{class:'btn small ghost',style:'margin-left:6px','data-m-act':'del','data-id':m.id,type:'button'},['Delete'])
+      ])
+    ]));
+  }
+}
+
+/* ---- Muscles form actions ---- */
+document.getElementById('muscles')?.addEventListener('click',(e)=>{
+  const b=e.target.closest('button'); if(!b) return;
+  const act=b.getAttribute('data-m-act'); const id=b.getAttribute('data-id'); if(!act||!id) return;
+  if(act==='edit'){
+    const m=state.muscles.find(x=>x.id===id); if(!m) return;
+    $('#mId').value=m.id; $('#mName').value=m.name; $('#mCd').value=m.cooldown; $('#mYw').value=(m.yellow??'');
+    $('#mName').focus();
+  }
+  if(act==='del'){
+    if(!confirm('Delete muscle?')) return;
+    state.muscles=state.muscles.filter(x=>x.id!==id);
+    state.exercises=state.exercises.map(ex=>({...ex, impacts: ex.impacts.filter(i=>i.mid!==id)}));
+    save(); renderMuscles(); renderTrain(); renderExercises();
+  }
+});
+$('#mCancel')?.addEventListener('click',()=>{ $('#mForm').reset(); $('#mId').value=''; });
+$('#mSave')?.addEventListener('click',()=>{
+  const id=$('#mId').value||uid();
+  const name=$('#mName').value.trim();
+  const cd=Number($('#mCd').value||0);
+  const ywRaw=$('#mYw').value; const yw=ywRaw===''?null:Number(ywRaw);
+  if(!name||cd<=0) return alert('Name and cooldown > 0');
+  const existing=state.muscles.find(x=>x.id===id);
+  const payload= existing? {...existing,name,cooldown:cd,yellow:yw} : {id,name,cooldown:cd,yellow:yw,lastAt:null,lastWorkedAt:null};
+  state.muscles = existing? state.muscles.map(x=>x.id===id?payload:x) : [...state.muscles,payload];
+  save(); $('#mForm').reset(); $('#mId').value=''; renderMuscles(); renderTrain(); renderExercises();
+});
+
+/* ---- Exercises list/forms ---- */
+function renderExercises(){
+  const box=$('#eMuscles'); if(!box) return; box.innerHTML='';
+  for(const m of state.muscles){
+    const row=el('div',{class:'pillrow'},[
+      el('label',{text:m.name}),
+      el('input',{type:'number',step:'1',min:'0',placeholder:'hours','data-mid':m.id})
+    ]);
+    box.appendChild(row);
+  }
+  const list=$('#eList'); if(!list) return; list.innerHTML='';
+  for(const ex of state.exercises){
+    const desc=ex.impacts.length? ex.impacts.map(i=>{
+      const nm=state.muscles.find(m=>m.id===i.mid)?.name||'???';
+      return `${nm}: +${i.hours}h`;
+    }).join(', ') : '—';
+    const overr=ex.override||'inherit';
+    const overrLabel=overr==='inherit'?'Inherit global':(overr==='reset'?'Override: Reset':'Override: Adjust');
+    list.appendChild(el('div',{class:'item'},[
+      el('div',{},[ el('div',{text:ex.name}), el('small',{class:'muted',text:`${overrLabel} • ${desc}`}) ]),
+      el('div',{},[
+        el('button',{class:'btn small','data-e-act':'edit','data-id':ex.id,type:'button'},['Edit']),
+        el('button',{class:'btn small ghost',style:'margin-left:6px','data-e-act':'del','data-id':ex.id,type:'button'},['Delete'])
+      ])
+    ]));
+  }
+}
+document.getElementById('exercises')?.addEventListener('click',(e)=>{
+  const b=e.target.closest('button'); if(!b) return;
+  const act=b.getAttribute('data-e-act'); const id=b.getAttribute('data-id'); if(!act||!id) return;
+  if(act==='edit'){
+    const ex=state.exercises.find(x=>x.id===id); if(!ex) return;
+    $('#eId').value=ex.id; $('#eName').value=ex.name; $('#eOverride').value=ex.override||'inherit';
+    const map=new Map(ex.impacts.map(i=>[i.mid,i.hours]));
+    $$('#eMuscles input[type=number]').forEach(inp=>{
+      const mid=inp.getAttribute('data-mid'); inp.value= map.has(mid)?map.get(mid):'';
     });
+    $('#eName').focus();
   }
-
-  // Inject icons before known muscle names in Readiness and Muscles
-  function injectIcons(){
-    let n=0;
-
-    // Readiness cards
-    document.querySelectorAll('#cards .card h3').forEach(h3=>{
-      const name = (h3.textContent||'').trim();
-      if (!MAP[name] || name === 'Forearms') return;
-      if (h3.previousElementSibling?.classList?.contains('micon')) return;
-      const chip = document.createElement('span'); chip.className='micon'; chip.appendChild(makeIcon(name));
-      h3.parentNode.insertBefore(chip, h3); n++;
-    });
-
-    // Muscles rows
-    document.querySelectorAll('#mList .item').forEach(row=>{
-      if (row.querySelector('.micon')) return;
-      const nameEl = row.querySelector('h3, div, [data-name]');
-      if (!nameEl) return;
-      const name = (nameEl.textContent||'').trim();
-      if (!MAP[name] || name === 'Forearms') return;
-      const chip = document.createElement('span'); chip.className='micon'; chip.appendChild(makeIcon(name));
-      nameEl.parentNode.insertBefore(chip, nameEl); n++;
-    });
-
-    hideForearmsDom();
-    return n;
+  if(act==='del'){
+    if(!confirm('Delete exercise?')) return;
+    state.exercises=state.exercises.filter(x=>x.id!==id);
+    save(); renderExercises(); renderTrain();
   }
+});
+$('#eCancel')?.addEventListener('click',()=>{
+  $('#eForm').reset(); $('#eId').value=''; $$('#eMuscles input[type=number]').forEach(inp=>inp.value=''); $('#eOverride').value='inherit';
+});
+$('#eSave')?.addEventListener('click',()=>{
+  const id=$('#eId').value||uid();
+  const name=$('#eName').value.trim();
+  const override=$('#eOverride').value||'inherit';
+  if(!name) return alert('Exercise name required');
+  const impacts=$$('#eMuscles input[type=number]').map(inp=>({mid:inp.getAttribute('data-mid'),hours:Number(inp.value||0)})).filter(x=>x.hours>0);
+  const existing=state.exercises.find(x=>x.id===id);
+  const payload= existing? {...existing,name,override,impacts} : {id, name, override, impacts};
+  state.exercises = existing? state.exercises.map(x=>x.id===id?payload:x) : [payload, ...state.exercises];
+  save(); renderExercises(); renderTrain();
+});
 
-  // One-time cleanup of saved data (removes Forearms + dangling impacts)
-  (function cleanupSaved(){
-    try{
-      const KEY="mct:v7_0"; const raw=localStorage.getItem(KEY);
-      if (!raw) return;
-      const state = JSON.parse(raw);
-      if (!state?.muscles) return;
-      const before = state.muscles.length;
-      state.muscles = state.muscles.filter(m => m.name !== 'Forearms');
-      const valid = new Set(state.muscles.map(m=>m.id));
-      state.exercises?.forEach(ex => ex.impacts = (ex.impacts||[]).filter(i => valid.has(i.mid)));
-      if (state.muscles.length !== before) localStorage.setItem(KEY, JSON.stringify(state));
-    } catch {}
-  })();
+/* ---- Logger ("Mark Done") behavior ---- */
+function logExerciseById(exId){
+  const ex = state.exercises.find(e=>e.id===exId);
+  if(!ex){ alert('Select an exercise first'); return false; }
+  // Determine mode
+  const mode = ex.override && ex.override!=='inherit' ? ex.override : (state.settings.globalExerciseMode || 'adjust');
+  const nowIso = new Date().toISOString();
+  // Update impacted muscles
+  for(const i of ex.impacts){
+    const m = state.muscles.find(mm=>mm.id===i.mid);
+    if(!m) continue;
+    if(mode==='reset'){
+      m.lastAt = nowIso; // full cooldown from now
+    }else{ // adjust
+      const current = Math.max(0, remMs(m));
+      const added = h2ms(i.hours||0);
+      const newRemaining = current + added;
+      setRemainingMs(m, newRemaining);
+    }
+    m.lastWorkedAt = nowIso;
+  }
+  // Add history line
+  const stamp = new Date();
+  const stampTxt = stamp.toLocaleString();
+  state.logs.unshift({ ts: stamp.getTime(), txt: `${stampTxt} — ${ex.name}` });
+  save();
+  renderAll();
+  return true;
+}
+$('#logNowBtn')?.addEventListener('click',()=>{
+  const exId = $('#logExerciseNow')?.value || '';
+  logExerciseById(exId);
+});
 
-  // Try on load and as DOM changes
-  const run = () => injectIcons();
-  document.addEventListener('DOMContentLoaded', run);
-  window.addEventListener('load', () => { run(); setTimeout(run, 300); setTimeout(run, 1000); });
-  new MutationObserver(run).observe(document.documentElement, {childList:true,subtree:true});
-})();
-</script>
-
-  <script>
-/* --------- Tabs: readable colors + remove 4th tab --------- */
+/* ---- Primary exercise modal ---- */
 (function(){
-  // 1) Make inactive tabs readable (light text), active tab white
-  const style = document.createElement('style');
-  style.textContent = `
-    .tab{ color:#cbd5e1 !important; background:#0f182e !important; }
-    .tab.active{ color:#ffffff !important; background:#111c32 !important; border-color:#334155 !important; }
-    .tab:focus-visible{ outline:2px solid #60a5fa; outline-offset:2px; }
-  `;
-  document.head.appendChild(style);
-
-  // 2) Remove the 4th "Data" tab + its panel if present
-  const dataTab = document.querySelector('nav .tab[data-tab="data"]');
-  if (dataTab) dataTab.remove();
-  const dataPanel = document.getElementById('data');
-  if (dataPanel) dataPanel.remove();
-
-  // 3) Ensure a visible default (activate first remaining tab if none active)
-  const tabs = Array.from(document.querySelectorAll('nav .tab'));
-  const panels = id => document.getElementById(id);
-  if (!tabs.some(t => t.classList.contains('active')) && tabs.length){
-    tabs[0].classList.add('active');
-    const target = panels(tabs[0].dataset.tab);
-    if (target){ target.classList.add('active'); }
-  }
-
-  // 4) Make the click handler tolerant if you removed a tab
-  document.addEventListener('click', (e)=>{
-    const b = e.target.closest('nav .tab'); if (!b) return;
-    const id = b.dataset.tab;
-    document.querySelectorAll('nav .tab').forEach(x=>x.classList.remove('active'));
-    document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
-    b.classList.add('active');
-    const panel = document.getElementById(id);
-    if (panel) panel.classList.add('active');
-  }, {capture:true});
-})();
-</script>
-
-<script>
-/* === Readiness -> click muscle to list primary exercises === */
-(function(){
-  // Minimal styles for the popup
-  const style = document.createElement('style');
-  style.textContent = `
-  #ex-modal{ position:fixed; inset:0; display:none; align-items:center; justify-content:center; z-index:9999; }
-  #ex-modal.show{ display:flex; }
-  #ex-modal .backdrop{ position:absolute; inset:0; background:rgba(0,0,0,.45); }
-  #ex-modal .sheet{ position:relative; width:min(720px,92vw); max-height:80vh; overflow:auto;
-    background:#0e1628; border:1px solid #1c2740; border-radius:14px; padding:14px; color:#e8ecf3; }
-  #ex-modal h3{ margin:0 0 8px 0; font-size:18px; }
-  #ex-modal .muted{ color:#9aa6b2; font-size:12px; margin-bottom:8px; }
-  #ex-modal .list{ display:flex; flex-direction:column; gap:8px; }
-  #ex-modal .row{ display:grid; grid-template-columns:1fr auto; gap:8px; align-items:center;
-    background:#0f182e; border:1px solid #1c2740; border-radius:10px; padding:10px; }
-  #ex-modal .btn{ border:1px solid #2a3a55;background:#182840;color:#e5e7eb;padding:8px 10px;border-radius:9px;cursor:pointer;font-size:13px}
-  #ex-modal .btn.ghost{ background:transparent }
-  `;
-  document.head.appendChild(style);
-
-  // Modal skeleton
-  const modal = document.createElement('div'); modal.id='ex-modal';
-  modal.innerHTML = `
-    <div class="backdrop" data-close></div>
-    <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="ex-title">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-        <h3 id="ex-title">Exercises</h3>
-        <button class="btn ghost" data-close type="button">Close</button>
-      </div>
-      <div class="muted" id="ex-sub"></div>
-      <div class="list" id="ex-list"></div>
-    </div>`;
-  document.body.appendChild(modal);
+  const modal = $('#ex-modal');
+  modal.addEventListener('click', (e)=>{ if(e.target.closest('[data-close]')) modal.classList.remove('show'); });
+  document.addEventListener('keydown', (e)=>{ if(e.key==='Escape') modal.classList.remove('show'); });
 
   function openModal(title, subtitle, rows){
-    document.getElementById('ex-title').textContent = title;
-    document.getElementById('ex-sub').textContent = subtitle || '';
-    const list = document.getElementById('ex-list');
-    list.innerHTML = '';
-    rows.forEach(r => list.appendChild(r));
+    $('#ex-title').textContent = title;
+    $('#ex-sub').textContent = subtitle || '';
+    const list = $('#ex-list'); list.innerHTML=''; rows.forEach(r=>list.appendChild(r));
     modal.classList.add('show');
   }
-  function closeModal(){ modal.classList.remove('show'); }
-  modal.addEventListener('click', (e)=>{ if(e.target.closest('[data-close]')) closeModal(); });
-  document.addEventListener('keydown', (e)=>{ if(e.key==='Escape') closeModal(); });
 
-  // Helpers referencing your app's state
-  const $ = s=>document.querySelector(s);
-  const $$ = s=>Array.from(document.querySelectorAll(s));
-  function muscleByName(name){ return (window.state?.muscles||[]).find(m=>m.name===name); }
-
-  // Determine if a muscle is "primary" for an exercise:
-  // the muscle's impact hours equals the max hours for that exercise.
+  function muscleByName(name){ return (state?.muscles||[]).find(m => (m.name||'').trim() === (name||'').trim()) || null; }
   function isPrimaryFor(ex, muscleId){
-    const arr = ex.impacts||[];
-    if(!arr.length) return false;
-    const max = Math.max(...arr.map(i=>Number(i.hours||0)));
-    return arr.some(i=> i.mid===muscleId && Number(i.hours||0)===max && max>0);
+    const arr = ex.impacts || [];
+    if (!arr.length) return false;
+    const max = Math.max(...arr.map(i => Number(i.hours||0)));
+    return max > 0 && arr.some(i => i.mid === muscleId && Number(i.hours||0) === max);
   }
-
   function primaryExercisesFor(muscleName){
-    const m = muscleByName(muscleName);
-    if(!m) return [];
-    return (window.state?.exercises||[]).filter(ex => isPrimaryFor(ex, m.id));
+    const m = muscleByName(muscleName); if (!m) return [];
+    return (state?.exercises||[]).filter(ex => isPrimaryFor(ex, m.id));
   }
-
-  // Build a row for the modal list
-  function rowForExercise(ex, muscleName){
-    // Describe impacts briefly (top 3)
+  function rowForExercise(ex){
     const impacts = (ex.impacts||[])
-      .map(i=>{
-        const nm = (window.state?.muscles||[]).find(m=>m.id===i.mid)?.name || '???';
-        return [nm, Number(i.hours||0)];
-      })
-      .sort((a,b)=>b[1]-a[1])
-      .slice(0,3)
-      .map(([nm,h])=> `${nm}: +${h}h`).join(', ');
-
+      .map(i => ({ name: (state.muscles.find(m=>m.id===i.mid)?.name)||'???', h: Number(i.hours||0) }))
+      .sort((a,b)=>b.h-a.h).slice(0,3)
+      .map(x => `${x.name}: +${x.h}h`).join(', ');
     const row = document.createElement('div'); row.className='row';
     const left = document.createElement('div');
     left.innerHTML = `<div style="font-weight:600">${ex.name}</div><div class="muted">${impacts||'—'}</div>`;
     const right = document.createElement('div');
-    const btn = document.createElement('button'); btn.className='btn'; btn.type='button';
-    btn.textContent = 'Fill logger';
+    const btn = document.createElement('button'); btn.className='btn'; btn.type='button'; btn.textContent='Mark Done';
     btn.addEventListener('click', ()=>{
-      const sel = $('#logExerciseNow');
-      if(sel){
-        sel.value = ex.id;
-        // jump user to logger area
-        $('#exerciseFilter')?.scrollIntoView({behavior:'smooth', block:'center'});
-        $('#exerciseFilter')?.focus();
-      }
-      closeModal();
+      if (logExerciseById(ex.id)) modal.classList.remove('show');
     });
     right.appendChild(btn);
     row.appendChild(left); row.appendChild(right);
     return row;
   }
 
-  // Click handler on readiness grid: ignore "Clear" buttons
+  // Click on a readiness card (ignore Clear)
   document.addEventListener('click', (e)=>{
-    const clearBtn = e.target.closest('button[data-action="clear"]');
-    if (clearBtn) return; // that's the Clear action, let it do its thing
-
-    const cardTitle = e.target.closest('#cards .card')?.querySelector('h3');
-    if(!cardTitle) return;
-    const muscleName = (cardTitle.textContent||'').trim();
-    if(!muscleName) return;
-
-    const list = primaryExercisesFor(muscleName);
-    const rows = list.map(ex => rowForExercise(ex, muscleName));
+    if (e.target.closest('button[data-action="clear"]')) return;
+    const card = e.target.closest('#cards .card'); if (!card) return;
+    const h3 = card.querySelector('h3'); if (!h3) return;
+    const name = (h3.textContent||'').trim(); if (!name) return;
+    const list = primaryExercisesFor(name);
+    const rows = list.map(rowForExercise);
     const subtitle = list.length
-      ? `Primary exercises for ${muscleName} (${list.length})`
-      : `No primary exercises found for ${muscleName}. You can add some in the Exercises tab.`;
-
+      ? `Primary exercises for ${name} (${list.length})`
+      : `No primary exercises found for ${name}.`;
     openModal('Exercises', subtitle, rows);
   }, {capture:true});
 })();
+
+/* ---- Data render & initial render ---- */
+function renderData(){ /* settings UI removed with Data tab */ }
+function renderAll(){ try{ renderTrain(); renderMuscles(); renderExercises(); renderHistory(); renderData(); } catch(err){ showErr(err.message||String(err)); } }
+renderAll();
+
+/* ---- Filter input live updates ---- */
+$('#exerciseFilter')?.addEventListener('input', ()=> makeExerciseOptions());
 </script>
-
-<script>
-function fillLogger(exerciseId){
-  const KEY = "mct:v7_0";
-  let state;
-
-  try {
-    state = JSON.parse(localStorage.getItem(KEY)) || {};
-  } catch {
-    state = {};
-  }
-
-  if (!state.exercises) state.exercises = [];
-
-  const ex = state.exercises.find(e => e.id === exerciseId);
-  if (!ex) {
-    console.warn("Exercise not found:", exerciseId);
-    return;
-  }
-
-  // Mark as done and set timestamp
-  ex.done = true;
-  ex.completedAt = Date.now();
-
-  // Save back to storage
-  localStorage.setItem(KEY, JSON.stringify(state));
-
-  // If you have a render/update function, call it here:
-  if (typeof renderUI === "function") renderUI();
-
-  console.log(`Exercise "${ex.name}" marked as done at ${new Date(ex.completedAt).toLocaleString()}`);
-}
-</script>
-
-
-  
 </body>
 </html>
