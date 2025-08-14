@@ -495,6 +495,57 @@ renderAll();
   }, {capture:true});
 })();
 </script>
+<script>
+/* === Patch: use real app state (fallback to localStorage) === */
+(function(){
+  const KEY = "mct:v7_0";
+
+  function getState(){
+    // Prefer the global if it exists
+    if (typeof window !== 'undefined' && window.state && window.state.muscles && window.state.exercises) {
+      return window.state;
+    }
+    // Fallback: read from localStorage
+    try {
+      const raw = localStorage.getItem(KEY);
+      const obj = raw ? JSON.parse(raw) : null;
+      if (obj && obj.muscles && obj.exercises) return obj;
+    } catch {}
+    return {muscles:[], exercises:[]};
+  }
+
+  // Replace helpers used by the modal
+  window.__mc_getState = getState;
+  window.__mc_muscleByName = function muscleByName(name){
+    const st = getState();
+    return st.muscles.find(m => (m.name||'').trim() === name.trim()) || null;
+  };
+  window.__mc_isPrimaryFor = function isPrimaryFor(ex, muscleId){
+    const arr = ex.impacts || [];
+    if (!arr.length) return false;
+    const max = Math.max(...arr.map(i => Number(i.hours||0)));
+    return arr.some(i => i.mid === muscleId && Number(i.hours||0) === max && max > 0);
+  };
+  window.__mc_primaryExercisesFor = function primaryExercisesFor(muscleName){
+    const st = getState();
+    const m = st.muscles.find(x => (x.name||'').trim() === (muscleName||'').trim());
+    if (!m) return [];
+    return st.exercises.filter(ex => window.__mc_isPrimaryFor(ex, m.id));
+  };
+
+  // If the previous drop-in used its own versions, gently override them:
+  if (window.primaryExercisesFor) {
+    window.primaryExercisesFor = window.__mc_primaryExercisesFor;
+  }
+  if (window.muscleByName) {
+    window.muscleByName = window.__mc_muscleByName;
+  }
+
+  // Quick self-test in console:
+  const st = getState();
+  console.info('[MC] State loaded:', {muscles: st.muscles.length, exercises: st.exercises.length});
+})();
+</script>
 
   
 </body>
