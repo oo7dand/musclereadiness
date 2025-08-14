@@ -375,6 +375,127 @@ renderAll();
 })();
 </script>
 
+<script>
+/* === Readiness -> click muscle to list primary exercises === */
+(function(){
+  // Minimal styles for the popup
+  const style = document.createElement('style');
+  style.textContent = `
+  #ex-modal{ position:fixed; inset:0; display:none; align-items:center; justify-content:center; z-index:9999; }
+  #ex-modal.show{ display:flex; }
+  #ex-modal .backdrop{ position:absolute; inset:0; background:rgba(0,0,0,.45); }
+  #ex-modal .sheet{ position:relative; width:min(720px,92vw); max-height:80vh; overflow:auto;
+    background:#0e1628; border:1px solid #1c2740; border-radius:14px; padding:14px; color:#e8ecf3; }
+  #ex-modal h3{ margin:0 0 8px 0; font-size:18px; }
+  #ex-modal .muted{ color:#9aa6b2; font-size:12px; margin-bottom:8px; }
+  #ex-modal .list{ display:flex; flex-direction:column; gap:8px; }
+  #ex-modal .row{ display:grid; grid-template-columns:1fr auto; gap:8px; align-items:center;
+    background:#0f182e; border:1px solid #1c2740; border-radius:10px; padding:10px; }
+  #ex-modal .btn{ border:1px solid #2a3a55;background:#182840;color:#e5e7eb;padding:8px 10px;border-radius:9px;cursor:pointer;font-size:13px}
+  #ex-modal .btn.ghost{ background:transparent }
+  `;
+  document.head.appendChild(style);
+
+  // Modal skeleton
+  const modal = document.createElement('div'); modal.id='ex-modal';
+  modal.innerHTML = `
+    <div class="backdrop" data-close></div>
+    <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="ex-title">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <h3 id="ex-title">Exercises</h3>
+        <button class="btn ghost" data-close type="button">Close</button>
+      </div>
+      <div class="muted" id="ex-sub"></div>
+      <div class="list" id="ex-list"></div>
+    </div>`;
+  document.body.appendChild(modal);
+
+  function openModal(title, subtitle, rows){
+    document.getElementById('ex-title').textContent = title;
+    document.getElementById('ex-sub').textContent = subtitle || '';
+    const list = document.getElementById('ex-list');
+    list.innerHTML = '';
+    rows.forEach(r => list.appendChild(r));
+    modal.classList.add('show');
+  }
+  function closeModal(){ modal.classList.remove('show'); }
+  modal.addEventListener('click', (e)=>{ if(e.target.closest('[data-close]')) closeModal(); });
+  document.addEventListener('keydown', (e)=>{ if(e.key==='Escape') closeModal(); });
+
+  // Helpers referencing your app's state
+  const $ = s=>document.querySelector(s);
+  const $$ = s=>Array.from(document.querySelectorAll(s));
+  function muscleByName(name){ return (window.state?.muscles||[]).find(m=>m.name===name); }
+
+  // Determine if a muscle is "primary" for an exercise:
+  // the muscle's impact hours equals the max hours for that exercise.
+  function isPrimaryFor(ex, muscleId){
+    const arr = ex.impacts||[];
+    if(!arr.length) return false;
+    const max = Math.max(...arr.map(i=>Number(i.hours||0)));
+    return arr.some(i=> i.mid===muscleId && Number(i.hours||0)===max && max>0);
+  }
+
+  function primaryExercisesFor(muscleName){
+    const m = muscleByName(muscleName);
+    if(!m) return [];
+    return (window.state?.exercises||[]).filter(ex => isPrimaryFor(ex, m.id));
+  }
+
+  // Build a row for the modal list
+  function rowForExercise(ex, muscleName){
+    // Describe impacts briefly (top 3)
+    const impacts = (ex.impacts||[])
+      .map(i=>{
+        const nm = (window.state?.muscles||[]).find(m=>m.id===i.mid)?.name || '???';
+        return [nm, Number(i.hours||0)];
+      })
+      .sort((a,b)=>b[1]-a[1])
+      .slice(0,3)
+      .map(([nm,h])=> `${nm}: +${h}h`).join(', ');
+
+    const row = document.createElement('div'); row.className='row';
+    const left = document.createElement('div');
+    left.innerHTML = `<div style="font-weight:600">${ex.name}</div><div class="muted">${impacts||'—'}</div>`;
+    const right = document.createElement('div');
+    const btn = document.createElement('button'); btn.className='btn'; btn.type='button';
+    btn.textContent = 'Fill logger';
+    btn.addEventListener('click', ()=>{
+      const sel = $('#logExerciseNow');
+      if(sel){
+        sel.value = ex.id;
+        // jump user to logger area
+        $('#exerciseFilter')?.scrollIntoView({behavior:'smooth', block:'center'});
+        $('#exerciseFilter')?.focus();
+      }
+      closeModal();
+    });
+    right.appendChild(btn);
+    row.appendChild(left); row.appendChild(right);
+    return row;
+  }
+
+  // Click handler on readiness grid: ignore "Clear" buttons
+  document.addEventListener('click', (e)=>{
+    const clearBtn = e.target.closest('button[data-action="clear"]');
+    if (clearBtn) return; // that's the Clear action, let it do its thing
+
+    const cardTitle = e.target.closest('#cards .card')?.querySelector('h3');
+    if(!cardTitle) return;
+    const muscleName = (cardTitle.textContent||'').trim();
+    if(!muscleName) return;
+
+    const list = primaryExercisesFor(muscleName);
+    const rows = list.map(ex => rowForExercise(ex, muscleName));
+    const subtitle = list.length
+      ? `Primary exercises for ${muscleName} (${list.length})`
+      : `No primary exercises found for ${muscleName}. You can add some in the Exercises tab.`;
+
+    openModal('Exercises', subtitle, rows);
+  }, {capture:true});
+})();
+</script>
+
   
 </body>
 </html>
