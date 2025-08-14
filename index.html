@@ -358,9 +358,6 @@ function renderTrain(){
   }
 }
 
-  }
-}
-
 function exerciseRankTuple(ex, order){
   const idxs = ex.impacts.map(i=> order.indexOf(i.mid)).filter(i=>i>=0).sort((a,b)=>a-b);
   if(!idxs.length) return [9999, 9999, ex.name.toLowerCase()];
