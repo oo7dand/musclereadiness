@@ -324,7 +324,7 @@ function readinessOrder(){
 }
 const iconFor=st=> st==="red"?"🔴":st==="yellow"?"🟡":st==="green"?"🟢":"🟩";
 
-function function renderTrain(){
+function renderTrain(){
   makeExerciseOptions();
   const grid=document.getElementById('cards'); if(!grid) return; grid.innerHTML='';
   const order=readinessOrder();
@@ -341,14 +341,17 @@ function function renderTrain(){
     ]);
     const titleWrap=el('div',{class:'title'},[iconBox, el('h3',{text:m.name})]);
 
-    // ⬇️ NEW: long‑press the muscle title to open YouTube search
+    // Long‑press the muscle title to open YouTube search
     attachLongPress(titleWrap, ()=> openYTSearch('best exercises for '+m.name));
 
     const card=el('div',{class:'card'},[
       el('div',{class:'slim'},[ titleWrap, el('div',{},[badge]) ]),
       el('div',{class:'subtle', text:'last: '+agoFromIso(m.lastWorkedAt??m.lastAt)}),
       el('div',{style:'margin-top:8px;display:flex;gap:8px'},[
-        el('button',{class:'btn small ghost','data-action':'clear','data-id':m.id,type:'button',...(clrDisabled?{'disabled':true,'aria-disabled':'true'}:{})},['Clear'])
+        el('button',{
+          class:'btn small ghost','data-action':'clear','data-id':m.id,type:'button',
+          ...(clrDisabled?{'disabled':true,'aria-disabled':'true'}:{})
+        },['Clear'])
       ])
     ]);
     grid.appendChild(card);
