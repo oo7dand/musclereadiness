@@ -497,145 +497,38 @@ renderAll();
 </script>
 
 <script>
-/* === Primary-Exercise Modal (state autodetect via localStorage scan) === */
-(function(){
-  // 0) Find state in localStorage (fallback if window.state not exported)
-  function detectState(){
-    // Prefer a global state if your app exposes it
-    if (typeof window !== 'undefined' && window.state && Array.isArray(window.state.muscles) && Array.isArray(window.state.exercises)) {
-      console.info('[MC] Using window.state');
-      return { key: 'window.state', state: window.state };
-    }
-    // Otherwise scan localStorage for a JSON with {muscles:[], exercises:[]}
-    for (let i=0; i<localStorage.length; i++){
-      const k = localStorage.key(i);
-      try {
-        const v = JSON.parse(localStorage.getItem(k));
-        if (v && Array.isArray(v.muscles) && Array.isArray(v.exercises)) {
-          console.info('[MC] Using localStorage key:', k, {muscles: v.muscles.length, exercises: v.exercises.length});
-          return { key: k, state: v };
-        }
-      } catch {}
-    }
-    console.warn('[MC] No state found in window.state or localStorage');
-    return { key: null, state: { muscles: [], exercises: [] } };
+function fillLogger(exerciseId){
+  const KEY = "mct:v7_0";
+  let state;
+
+  try {
+    state = JSON.parse(localStorage.getItem(KEY)) || {};
+  } catch {
+    state = {};
   }
 
-  function getState(){ return detectState().state; }
+  if (!state.exercises) state.exercises = [];
 
-  // 1) UI: create (or reuse) modal shell
-  let modal = document.getElementById('ex-modal');
-  if (!modal){
-    const style = document.createElement('style');
-    style.textContent = `
-    #ex-modal{ position:fixed; inset:0; display:none; align-items:center; justify-content:center; z-index:9999; }
-    #ex-modal.show{ display:flex; }
-    #ex-modal .backdrop{ position:absolute; inset:0; background:rgba(0,0,0,.45); }
-    #ex-modal .sheet{ position:relative; width:min(720px,92vw); max-height:80vh; overflow:auto;
-      background:#0e1628; border:1px solid #1c2740; border-radius:14px; padding:14px; color:#e8ecf3; }
-    #ex-modal h3{ margin:0 0 8px 0; font-size:18px; }
-    #ex-modal .muted{ color:#9aa6b2; font-size:12px; margin-bottom:8px; }
-    #ex-modal .list{ display:flex; flex-direction:column; gap:8px; }
-    #ex-modal .row{ display:grid; grid-template-columns:1fr auto; gap:8px; align-items:center;
-      background:#0f182e; border:1px solid #1c2740; border-radius:10px; padding:10px; }
-    #ex-modal .btn{ border:1px solid #2a3a55;background:#182840;color:#e5e7eb;padding:8px 10px;border-radius:9px;cursor:pointer;font-size:13px}
-    #ex-modal .btn.ghost{ background:transparent }
-    `;
-    document.head.appendChild(style);
-
-    modal = document.createElement('div'); modal.id='ex-modal';
-    modal.innerHTML = `
-      <div class="backdrop" data-close></div>
-      <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="ex-title">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-          <h3 id="ex-title">Exercises</h3>
-          <button class="btn ghost" data-close type="button">Close</button>
-        </div>
-        <div class="muted" id="ex-sub"></div>
-        <div class="list" id="ex-list"></div>
-      </div>`;
-    document.body.appendChild(modal);
-    modal.addEventListener('click', (e)=>{ if(e.target.closest('[data-close]')) modal.classList.remove('show'); });
-    document.addEventListener('keydown', (e)=>{ if(e.key==='Escape') modal.classList.remove('show'); });
+  const ex = state.exercises.find(e => e.id === exerciseId);
+  if (!ex) {
+    console.warn("Exercise not found:", exerciseId);
+    return;
   }
 
-  function openModal(title, subtitle, rows){
-    document.getElementById('ex-title').textContent = title;
-    document.getElementById('ex-sub').textContent = subtitle || '';
-    const list = document.getElementById('ex-list'); list.innerHTML = '';
-    rows.forEach(r => list.appendChild(r));
-    modal.classList.add('show');
-  }
+  // Mark as done and set timestamp
+  ex.done = true;
+  ex.completedAt = Date.now();
 
-  // 2) Helpers to compute "primary" using detected state
-  function getMuscleByName(name){
-    const st = getState();
-    return st.muscles.find(m => (m.name||'').trim() === (name||'').trim()) || null;
-  }
-  function isPrimaryFor(ex, muscleId){
-    const arr = ex.impacts || [];
-    if (!arr.length) return false;
-    const max = Math.max(...arr.map(i => Number(i.hours||0)));
-    if (max <= 0) return false;
-    // true if this muscle has the max impact hours for that exercise
-    return arr.some(i => i.mid === muscleId && Number(i.hours||0) === max);
-  }
-  function primaryExercisesFor(muscleName){
-    const st = getState();
-    const m = getMuscleByName(muscleName);
-    if (!m) return [];
-    return st.exercises.filter(ex => isPrimaryFor(ex, m.id));
-  }
+  // Save back to storage
+  localStorage.setItem(KEY, JSON.stringify(state));
 
-  function rowForExercise(ex){
-    const st = getState();
-    const impacts = (ex.impacts||[])
-      .map(i=>({ name: (st.muscles.find(m=>m.id===i.mid)?.name)||'???', h: Number(i.hours||0) }))
-      .sort((a,b)=>b.h-a.h).slice(0,3)
-      .map(x=>`${x.name}: +${x.h}h`).join(', ');
-    const row = document.createElement('div'); row.className='row';
-    const left = document.createElement('div');
-    left.innerHTML = `<div style="font-weight:600">${ex.name}</div><div class="muted">${impacts||'—'}</div>`;
-    const right = document.createElement('div');
-    const btn = document.createElement('button'); btn.className='btn'; btn.type='button'; btn.textContent='Fill logger';
-    btn.addEventListener('click', ()=>{
-      const sel = document.getElementById('logExerciseNow');
-      if (sel) { sel.value = ex.id; document.getElementById('exerciseFilter')?.scrollIntoView({behavior:'smooth', block:'center'}); document.getElementById('exerciseFilter')?.focus(); }
-      modal.classList.remove('show');
-    });
-    right.appendChild(btn);
-    row.appendChild(left); row.appendChild(right);
-    return row;
-  }
+  // If you have a render/update function, call it here:
+  if (typeof renderUI === "function") renderUI();
 
-  // 3) Click on readiness card (ignore "Clear")
-  document.addEventListener('click', (e)=>{
-    if (e.target.closest('button[data-action="clear"]')) return;
-    const card = e.target.closest('#cards .card'); if(!card) return;
-    const h3 = card.querySelector('h3'); if(!h3) return;
-    const muscleName = (h3.textContent||'').trim(); if(!muscleName) return;
-
-    const list = primaryExercisesFor(muscleName);
-    const rows = list.map(rowForExercise);
-    const subtitle = list.length
-      ? `Primary exercises for ${muscleName} (${list.length})`
-      : `No primary exercises found for ${muscleName}.`;
-
-    openModal('Exercises', subtitle, rows);
-  }, {capture:true});
-
-  // 4) Debug line so we know it found your state
-  (function debugOnce(){
-    const d = detectState(); // logs in console
-    // Also log one example mapping to confirm IDs line up
-    if (d.state.muscles?.length && d.state.exercises?.length) {
-      const m = d.state.muscles[0];
-      const exCount = d.state.exercises.filter(ex => (ex.impacts||[]).some(i=>i.mid===m.id)).length;
-      console.info('[MC] Example:', m.name, 'appears in', exCount, 'exercise(s)');
-    }
-  })();
-})();
+  console.log(`Exercise "${ex.name}" marked as done at ${new Date(ex.completedAt).toLocaleString()}`);
+}
 </script>
+
 
   
 </body>
