@@ -335,5 +335,46 @@ renderAll();
 })();
 </script>
 
+  <script>
+/* --------- Tabs: readable colors + remove 4th tab --------- */
+(function(){
+  // 1) Make inactive tabs readable (light text), active tab white
+  const style = document.createElement('style');
+  style.textContent = `
+    .tab{ color:#cbd5e1 !important; background:#0f182e !important; }
+    .tab.active{ color:#ffffff !important; background:#111c32 !important; border-color:#334155 !important; }
+    .tab:focus-visible{ outline:2px solid #60a5fa; outline-offset:2px; }
+  `;
+  document.head.appendChild(style);
+
+  // 2) Remove the 4th "Data" tab + its panel if present
+  const dataTab = document.querySelector('nav .tab[data-tab="data"]');
+  if (dataTab) dataTab.remove();
+  const dataPanel = document.getElementById('data');
+  if (dataPanel) dataPanel.remove();
+
+  // 3) Ensure a visible default (activate first remaining tab if none active)
+  const tabs = Array.from(document.querySelectorAll('nav .tab'));
+  const panels = id => document.getElementById(id);
+  if (!tabs.some(t => t.classList.contains('active')) && tabs.length){
+    tabs[0].classList.add('active');
+    const target = panels(tabs[0].dataset.tab);
+    if (target){ target.classList.add('active'); }
+  }
+
+  // 4) Make the click handler tolerant if you removed a tab
+  document.addEventListener('click', (e)=>{
+    const b = e.target.closest('nav .tab'); if (!b) return;
+    const id = b.dataset.tab;
+    document.querySelectorAll('nav .tab').forEach(x=>x.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+    b.classList.add('active');
+    const panel = document.getElementById(id);
+    if (panel) panel.classList.add('active');
+  }, {capture:true});
+})();
+</script>
+
+  
 </body>
 </html>
