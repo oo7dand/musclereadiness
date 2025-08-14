@@ -226,5 +226,124 @@ document.getElementById('wipeBtn')?.addEventListener('click',()=>{ if(confirm('W
 function renderAll(){ try{ renderTrain(); renderMuscles(); renderExercises(); renderHistory(); renderData(); } catch(err){ showErr(err.message||String(err)); } }
 renderAll();
 </script>
+  <script>
+// ================= ICONS + CLEANUP DROP-IN =================
+// Cache-bust version for icon files
+const ASSET_V = '7.2.1';
+
+// Slugs for filenames (no Forearms on purpose)
+const MUSCLE_SLUG = {
+  "Quads":"quads","Hamstrings":"hamstrings","Glutes":"glutes","Lats":"lats",
+  "Chest / Pecs":"chest","Shoulders / Delts":"shoulders","Traps":"traps",
+  "Lower back":"lowerback","Upper back":"upperback",
+  "Biceps":"biceps","Triceps":"triceps","Abs":"abs","Obliques":"obliques","Calves":"calves"
+};
+
+const PLACEHOLDER_DATA_URI =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQYV2NkYGD4DwABYQF1Q0kRngAAAABJRU5ErkJggg=="; // 1x1 transparent
+
+function iconBase(name){
+  const slug = MUSCLE_SLUG[name] || name.toLowerCase().replace(/\s+\/\s+/g,' ').replace(/\s+/g,'-');
+  return `./img/muscles/${slug}`;
+}
+function makeIconImg(name){
+  const base = iconBase(name);
+  const img = new Image();
+  img.className = 'micon-img';
+  img.width = 24; img.height = 24;
+  img.loading = 'lazy'; img.decoding = 'async'; img.alt = name;
+  img.src = `${base}-128.png?v=${ASSET_V}`;
+  img.srcset = `${base}-128.png?v=${ASSET_V} 128w, ${base}-256.png?v=${ASSET_V} 256w, ${base}-512.png?v=${ASSET_V} 512w`;
+  img.sizes = '(min-width: 900px) 256px, 128px';
+  img.onerror = () => {
+    const tries = [`${base}-256.png?v=${ASSET_V}`, `${base}-512.png?v=${ASSET_V}`];
+    let i = 0;
+    img.onerror = () => { if (i < tries.length) img.src = tries[i++]; else img.src = PLACEHOLDER_DATA_URI; };
+    img.src = tries[i++];
+  };
+  return img;
+}
+
+// Minimal CSS in case your file doesn't have it
+(function ensureIconCss(){
+  if (document.getElementById('micon-css')) return;
+  const css = `
+    .micon{width:28px;height:28px;flex:0 0 28px;border-radius:6px;background:#0f1a2e;
+           display:inline-flex;align-items:center;justify-content:center;overflow:hidden;margin-right:8px}
+    .mrow{display:flex;gap:8px;align-items:center}
+  `;
+  const style = document.createElement('style'); style.id='micon-css'; style.textContent = css;
+  document.head.appendChild(style);
+})();
+
+// Remove Forearms safely (handles old saves)
+(function removeForearms(){
+  try {
+    const KEY = "mct:v7_0";
+    const raw = localStorage.getItem(KEY);
+    if (!raw) return;
+    const state = JSON.parse(raw);
+    if (!state || !Array.isArray(state.muscles)) return;
+    const before = state.muscles.length;
+    state.muscles = state.muscles.filter(m => m.name !== 'Forearms');
+    const valid = new Set(state.muscles.map(m=>m.id));
+    if (Array.isArray(state.exercises)) {
+      state.exercises.forEach(ex => { ex.impacts = (ex.impacts||[]).filter(i => valid.has(i.mid)); });
+    }
+    if (state.muscles.length !== before) localStorage.setItem(KEY, JSON.stringify(state));
+  } catch {}
+})();
+
+// DOM patcher: inject icons into Readiness + Muscles regardless of your render code
+function injectIcons(){
+  // READINESS cards: look for muscle name headings
+  document.querySelectorAll('#cards .card h3').forEach(h3=>{
+    const name = h3.textContent.trim();
+    if (!name || name === 'Forearms') return;
+    // already has icon?
+    if (h3.previousElementSibling && h3.previousElementSibling.classList?.contains('micon')) return;
+    const wrap = document.createElement('div'); wrap.className = 'mrow';
+    const icon = document.createElement('span'); icon.className = 'micon';
+    icon.appendChild(makeIconImg(name));
+    h3.parentNode.insertBefore(wrap, h3);
+    wrap.appendChild(icon);
+    wrap.appendChild(h3);
+  });
+
+  // MUSCLES list rows: first text cell likely contains the name
+  document.querySelectorAll('#mList .item').forEach(row=>{
+    // skip if already has an icon
+    if (row.querySelector('.micon')) return;
+    const nameEl =
+      row.querySelector('h3') ||
+      row.querySelector('div') ||
+      row.querySelector('[data-name]') ||
+      null;
+    if (!nameEl) return;
+    const nameText = (nameEl.textContent||'').trim();
+    if (!nameText || nameText === 'Forearms') return;
+
+    const icon = document.createElement('span'); icon.className = 'micon';
+    icon.appendChild(makeIconImg(nameText));
+    // put icon before the name element
+    nameEl.parentNode.insertBefore(icon, nameEl);
+  });
+}
+
+// Try to inject after every render tick
+const tryInject = () => requestAnimationFrame(injectIcons);
+document.addEventListener('DOMContentLoaded', tryInject);
+window.addEventListener('load', tryInject);
+// Many apps call render on clicks—cover common cases:
+document.addEventListener('click', tryInject);
+document.addEventListener('change', tryInject);
+
+// Also run after 300ms and 1s as a safety net (covers async renderers)
+setTimeout(injectIcons, 300);
+setTimeout(injectIcons, 1000);
+
+// ================= END DROP-IN =================
+</script>
+
 </body>
 </html>
