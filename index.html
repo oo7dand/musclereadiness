@@ -226,138 +226,113 @@ document.getElementById('wipeBtn')?.addEventListener('click',()=>{ if(confirm('W
 function renderAll(){ try{ renderTrain(); renderMuscles(); renderExercises(); renderHistory(); renderData(); } catch(err){ showErr(err.message||String(err)); } }
 renderAll();
 </script>
-<script>
-/*** ICON DEBUGGER + INJECTOR (lowercase 128px files) ***/
-const ASSET_V='7.2.4';
-const ICON_ROOT='./img/muscles';
-const PLACEHOLDER="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQYV2NkYGD4DwABYQF1Q0kRngAAAABJRU5ErkJggg==";
 
-// Map exactly how your UI labels muscles -> filename slug
-const MUSCLE_SLUG={
-  "Abs":"abs","Biceps":"biceps","Calves":"calves","Chest / Pecs":"chest","Glutes":"glutes",
-  "Hamstrings":"hamstrings","Lats":"lats","Lower back":"lowerback","Obliques":"obliques",
-  "Quads":"quads","Shoulders / Delts":"shoulders","Traps":"traps","Triceps":"triceps",
-  "Upper back":"upperback" // add upperback-128.png when ready
-};
+<script id="icons-loader-v7-2-5">
+(function(){
+  if (window.__iconsPatched) return; window.__iconsPatched = true;
 
-const MUSCLE_NAMES = Object.keys(MUSCLE_SLUG);
+  const ASSET_V = '7.2.5';
+  const ROOT = './img/muscles';
+  const PLACEHOLDER =
+    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQYV2NkYGD4DwABYQF1Q0kRngAAAABJRU5ErkJggg==";
 
-function iconUrl(name){ const slug=MUSCLE_SLUG[name]; return slug?`${ICON_ROOT}/${slug}-128.png?v=${ASSET_V}`:null; }
-function makeIcon(name){
-  const url=iconUrl(name);
-  const img=new Image(); img.width=24; img.height=24; img.alt=name; img.loading='lazy'; img.decoding='async';
-  img.className='micon-img';
-  if(!url){ console.warn('UNMAPPED_MUSCLE',name); img.src=PLACEHOLDER; return img; }
-  img.src=url;
-  img.onerror=()=>{ console.error('MISSING_ICON',name,'->',url); img.src=PLACEHOLDER; };
-  return img;
-}
+  // Exact mapping to your filenames (lowercase, no extra words)
+  const MAP = {
+    "Abs":"abs",
+    "Biceps":"biceps",
+    "Calves":"calves",
+    "Chest / Pecs":"chest",
+    "Glutes":"glutes",
+    "Hamstrings":"hamstrings",
+    "Lats":"lats",
+    "Lower back":"lowerback",
+    "Obliques":"obliques",
+    "Quads":"quads",
+    "Shoulders / Delts":"shoulders",
+    "Traps":"traps",
+    "Triceps":"triceps",
+    "Upper back":"upperback" // only if you add upperback-128.png
+  };
 
-// Minimal CSS for icon chip + debugger
-(function css(){
-  if(document.getElementById('iconcss')) return;
-  const s=document.createElement('style'); s.id='iconcss';
-  s.textContent=`
-  .micon{width:28px;height:28px;flex:0 0 28px;border-radius:6px;background:#0f1a2e;
-         display:inline-flex;align-items:center;justify-content:center;overflow:hidden;margin-right:8px}
-  .mrow{display:flex;gap:8px;align-items:center}
-  #icon-debug{position:fixed;bottom:12px;right:12px;background:#0e1628;border:1px solid #1c2740;border-radius:10px;
-              color:#e8ecf3;font:12px/1.4 system-ui;padding:10px;max-width:320px;z-index:999999;box-shadow:0 8px 24px rgba(0,0,0,.4)}
-  #icon-debug h4{margin:0 0 6px 0;font-size:12px}
-  #icon-debug details{border-top:1px solid #1c2740;padding-top:6px;margin-top:6px}
-  #icon-debug .ok{color:#10b981} #icon-debug .miss{color:#ef4444}
-  #icon-debug code{color:#9aa6b2}
-  `;
-  document.head.appendChild(s);
-})();
-
-// Remove Forearms from saved state + hide any DOM row
-(function cleanupForearms(){
-  try{
-    const KEY="mct:v7_0"; const raw=localStorage.getItem(KEY);
-    if(raw){ const st=JSON.parse(raw);
-      if(st?.muscles){ 
-        const before=st.muscles.length;
-        st.muscles = st.muscles.filter(m=>m.name!=='Forearms');
-        const valid=new Set(st.muscles.map(m=>m.id));
-        st.exercises?.forEach(ex=>{ ex.impacts=(ex.impacts||[]).filter(i=>valid.has(i.mid)); });
-        if(st.muscles.length!==before){ localStorage.setItem(KEY,JSON.stringify(st)); console.info('CLEANUP: removed Forearms'); }
-      }
-    }
-  }catch(e){ console.warn('CLEANUP_ERROR',e); }
-  document.querySelectorAll('*').forEach(el=>{
-    if(el.childElementCount===0 && (el.textContent||'').trim()==='Forearms'){
-      const row=el.closest('.item,.card')||el.parentElement; if(row) row.style.display='none';
-    }
-  });
-})();
-
-// Try to inject icons next to any text node that exactly matches a muscle display name.
-function injectIcons(){
-  let injected=0;
-  const selectors = [
-    '#cards .card h3',         // readiness cards (common)
-    '#mList .item h3',         // muscles list (h3 label variant)
-    '#mList .item div',        // muscles list (div label variant)
-    'h3','h4','li','span','div'// broad fallback
-  ];
-  const seen = new WeakSet();
-  for(const sel of selectors){
-    document.querySelectorAll(sel).forEach(el=>{
-      if(seen.has(el)) return;
-      const name=(el.textContent||'').trim();
-      if(!MUSCLE_NAMES.includes(name)) return;
-      if(el.previousElementSibling?.classList?.contains('micon')) return;
-      const chip=document.createElement('span'); chip.className='micon'; chip.appendChild(makeIcon(name));
-      el.parentNode.insertBefore(chip, el);
-      seen.add(el);
-      injected++;
-    });
-    if(injected) break; // usually first specific selectors will hit
+  // Build an <img> for a given UI name
+  function makeIcon(name){
+    const slug = MAP[name];
+    const img = new Image();
+    img.width = 24; img.height = 24; img.alt = name; img.loading = 'lazy'; img.decoding = 'async';
+    img.className = 'micon-img';
+    if (!slug) { img.src = PLACEHOLDER; return img; }
+    const url = `${ROOT}/${slug}-128.png?v=${ASSET_V}`;
+    img.src = url;
+    img.onerror = () => { img.src = PLACEHOLDER; };
+    return img;
   }
-  if(!injected) console.warn('NO_INJECTION_TARGETS_FOUND (check selectors)');
-  else console.info('ICONS_INJECTED', injected);
-}
 
-// Build small debug panel showing each muscle + whether the file loads
-function mountDebugger(){
-  if(document.getElementById('icon-debug')) return;
-  const box=document.createElement('div'); box.id='icon-debug';
-  const head=document.createElement('h4'); head.textContent='Icon Debugger';
-  const summary=document.createElement('div'); summary.textContent='Checking files in '+ICON_ROOT;
-  const details=document.createElement('details');
-  const sum=document.createElement('summary'); sum.textContent='Show status'; details.appendChild(sum);
-  const list=document.createElement('div');
+  // Minimal styles (only if not already present)
+  if (!document.getElementById('micon-css')) {
+    const style = document.createElement('style'); style.id='micon-css';
+    style.textContent = `.micon{width:28px;height:28px;flex:0 0 28px;border-radius:6px;background:#0f1a2e;display:inline-flex;align-items:center;justify-content:center;overflow:hidden;margin-right:8px}`;
+    document.head.appendChild(style);
+  }
 
-  MUSCLE_NAMES.forEach(name=>{
-    const url=iconUrl(name);
-    const row=document.createElement('div');
-    const img=new Image(); img.width=20; img.height=20; img.alt=name; img.loading='lazy';
-    const code=document.createElement('code'); code.textContent=(url||'(unmapped)');
-    const label=document.createElement('span'); label.style.marginLeft='6px'; label.textContent=name+' — ';
-    const status=document.createElement('span'); status.textContent='checking...';
+  // Remove Forearms from DOM if it still appears
+  function hideForearmsDom(){
+    document.querySelectorAll('*, * *').forEach(el=>{
+      if (el.childElementCount === 0 && (el.textContent||'').trim() === 'Forearms') {
+        const row = el.closest('.item,.card') || el.parentElement;
+        if (row) row.style.display = 'none';
+      }
+    });
+  }
 
-    img.src=url||PLACEHOLDER;
-    img.onerror=()=>{ status.textContent='missing'; status.className='miss'; img.src=PLACEHOLDER; console.error('MISSING_ICON', name, '->', url); };
-    img.onload=()=>{ status.textContent='ok'; status.className='ok'; };
+  // Inject icons before known muscle names in Readiness and Muscles
+  function injectIcons(){
+    let n=0;
 
-    row.appendChild(img); row.appendChild(label); row.appendChild(status); row.appendChild(document.createElement('br')); row.appendChild(code);
-    list.appendChild(row);
-  });
+    // Readiness cards
+    document.querySelectorAll('#cards .card h3').forEach(h3=>{
+      const name = (h3.textContent||'').trim();
+      if (!MAP[name] || name === 'Forearms') return;
+      if (h3.previousElementSibling?.classList?.contains('micon')) return;
+      const chip = document.createElement('span'); chip.className='micon'; chip.appendChild(makeIcon(name));
+      h3.parentNode.insertBefore(chip, h3); n++;
+    });
 
-  details.appendChild(list);
-  box.appendChild(head); box.appendChild(summary); box.appendChild(details);
-  document.body.appendChild(box);
-}
+    // Muscles rows
+    document.querySelectorAll('#mList .item').forEach(row=>{
+      if (row.querySelector('.micon')) return;
+      const nameEl = row.querySelector('h3, div, [data-name]');
+      if (!nameEl) return;
+      const name = (nameEl.textContent||'').trim();
+      if (!MAP[name] || name === 'Forearms') return;
+      const chip = document.createElement('span'); chip.className='micon'; chip.appendChild(makeIcon(name));
+      nameEl.parentNode.insertBefore(chip, nameEl); n++;
+    });
 
-function iconUrl(name){ const slug=MUSCLE_SLUG[name]; return slug?`${ICON_ROOT}/${slug}-128.png?v=${ASSET_V}`:null; }
+    hideForearmsDom();
+    return n;
+  }
 
-// Keep trying as DOM changes (works regardless of your internal render functions)
-const mo=new MutationObserver(()=>injectIcons());
-mo.observe(document.documentElement,{childList:true,subtree:true});
-document.addEventListener('DOMContentLoaded', ()=>{ mountDebugger(); injectIcons(); });
-window.addEventListener('load', ()=>{ injectIcons(); setTimeout(injectIcons,300); setTimeout(injectIcons,1000); });
-document.addEventListener('click', ()=>setTimeout(injectIcons,0));
+  // One-time cleanup of saved data (removes Forearms + dangling impacts)
+  (function cleanupSaved(){
+    try{
+      const KEY="mct:v7_0"; const raw=localStorage.getItem(KEY);
+      if (!raw) return;
+      const state = JSON.parse(raw);
+      if (!state?.muscles) return;
+      const before = state.muscles.length;
+      state.muscles = state.muscles.filter(m => m.name !== 'Forearms');
+      const valid = new Set(state.muscles.map(m=>m.id));
+      state.exercises?.forEach(ex => ex.impacts = (ex.impacts||[]).filter(i => valid.has(i.mid)));
+      if (state.muscles.length !== before) localStorage.setItem(KEY, JSON.stringify(state));
+    } catch {}
+  })();
+
+  // Try on load and as DOM changes
+  const run = () => injectIcons();
+  document.addEventListener('DOMContentLoaded', run);
+  window.addEventListener('load', () => { run(); setTimeout(run, 300); setTimeout(run, 1000); });
+  new MutationObserver(run).observe(document.documentElement, {childList:true,subtree:true});
+})();
 </script>
 
 </body>
