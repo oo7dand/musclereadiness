@@ -94,7 +94,7 @@ hr.sep{border:0;border-top:1px solid var(--border);margin:12px 0}
         </div>
         <div id="logger">
           <input id="exerciseFilter" placeholder="Filter exercises…" aria-label="Filter exercises">
-          <select id="logExerciseNow"></select>
+          <select id="logExerciseNow" title="Long‑press for form video"></select>
           <button class="btn" id="logNowBtn" type="button">Mark Done</button>
         </div>
       </div>
@@ -158,11 +158,12 @@ hr.sep{border:0;border-top:1px solid var(--border);margin:12px 0}
     </div>
     <div class="muted" id="ex-sub"></div>
     <div class="list" id="ex-list"></div>
+    <div class="muted" style="margin-top:6px">Hint: long‑press an exercise for a YouTube “correct form” search.</div>
   </div>
 </div>
 
 <div id="error"></div>
-<footer><small>v7.2 PWA — icons & primary exercise popup</small></footer>
+<footer><small>v7.2 PWA — icons & primary exercise popup + long‑press YouTube search</small></footer>
 
 <script>
 /* ---- PWA SW ---- */
@@ -185,6 +186,32 @@ function remMs(m){ if(!m.lastAt) return 0; return (new Date(m.lastAt).getTime()+
 function staleCheck(m){ const ref=m.lastWorkedAt??m.lastAt; if(!ref) return true; const days=(state.settings.staleDays??10); return (Date.now()-new Date(ref).getTime()) >= days*86400000; }
 function colorFor(m){ const remaining=remMs(m); if(remaining>0){ const yh=(m.yellow??state.settings.yellowDefault); if(remaining<=h2ms(yh)) return "yellow"; return "red"; } else { if(staleCheck(m)) return "stale"; return "green"; } }
 function setRemainingMs(m,ms){ const cd=h2ms(m.cooldown); const lastPrime=Date.now()+ms-cd; m.lastAt=new Date(lastPrime).toISOString(); }
+
+/* ---- Long‑press helpers + YouTube open ---- */
+function openYTSearch(q){
+  const url='https://www.youtube.com/results?search_query='+encodeURIComponent(q);
+  window.open(url,'_blank','noopener,noreferrer');
+}
+function attachLongPress(el, cb, ms=550){
+  let t=null, startX=0, startY=0;
+  const clear=()=>{ if(t){ clearTimeout(t); t=null; } };
+  const start=(e)=>{
+    clear();
+    const p = ('touches' in e && e.touches[0]) ? e.touches[0] : e;
+    startX=p.clientX||0; startY=p.clientY||0;
+    t=setTimeout(()=>{ t=null; cb(); }, ms);
+  };
+  const move=(e)=>{
+    if(!t) return;
+    const p = ('touches' in e && e.touches[0]) ? e.touches[0] : e;
+    const dx=Math.abs((p.clientX||0)-startX), dy=Math.abs((p.clientY||0)-startY);
+    if(dx>8||dy>8) clear();
+  };
+  el.addEventListener('mousedown', start);
+  el.addEventListener('touchstart', start, {passive:true});
+  ['mouseup','mouseleave','touchend','touchcancel'].forEach(evt=>el.addEventListener(evt, clear, {passive:true}));
+  el.addEventListener('touchmove', move, {passive:true});
+}
 
 /* ---- Icons (inline, exact filenames) ---- */
 const ICON_ROOT='./img/muscles';
@@ -297,7 +324,7 @@ function readinessOrder(){
 }
 const iconFor=st=> st==="red"?"🔴":st==="yellow"?"🟡":st==="green"?"🟢":"🟩";
 
-function renderTrain(){
+function function renderTrain(){
   makeExerciseOptions();
   const grid=document.getElementById('cards'); if(!grid) return; grid.innerHTML='';
   const order=readinessOrder();
@@ -313,6 +340,10 @@ function renderTrain(){
       (function(){const i=iconImgByName(m.name); return i;})()
     ]);
     const titleWrap=el('div',{class:'title'},[iconBox, el('h3',{text:m.name})]);
+
+    // ⬇️ NEW: long‑press the muscle title to open YouTube search
+    attachLongPress(titleWrap, ()=> openYTSearch('best exercises for '+m.name));
+
     const card=el('div',{class:'card'},[
       el('div',{class:'slim'},[ titleWrap, el('div',{},[badge]) ]),
       el('div',{class:'subtle', text:'last: '+agoFromIso(m.lastWorkedAt??m.lastAt)}),
@@ -321,6 +352,9 @@ function renderTrain(){
       ])
     ]);
     grid.appendChild(card);
+  }
+}
+
   }
 }
 
@@ -357,6 +391,18 @@ function makeExerciseOptions(){
   if(!filtered.length){
     const opt=document.createElement('option'); opt.value=''; opt.text='No matches'; sel.appendChild(opt);
   }
+
+  /* Long‑press on the dropdown to open YouTube for selected exercise */
+  // Remove any previous handlers by replacing the element (cheap + safe)
+  const parent = sel.parentElement;
+  const clone = sel.cloneNode(true);
+  parent.replaceChild(clone, sel);
+  attachLongPress(clone, ()=>{
+    const id = clone.value || '';
+    const ex = state.exercises.find(e=>e.id===id);
+    if(!ex){ showErr('Pick an exercise first.'); return; }
+    openYTSearch('correct form of '+ex.name);
+  });
 }
 
 function renderHistory(){
@@ -537,7 +583,7 @@ $('#logNowBtn')?.addEventListener('click',()=>{
       .map(i => ({ name: (state.muscles.find(m=>m.id===i.mid)?.name)||'???', h: Number(i.hours||0) }))
       .sort((a,b)=>b.h-a.h).slice(0,3)
       .map(x => `${x.name}: +${x.h}h`).join(', ');
-    const row = document.createElement('div'); row.className='row';
+    const row = document.createElement('div'); row.className='row'; row.setAttribute('title','Long‑press for form video');
     const left = document.createElement('div');
     left.innerHTML = `<div style="font-weight:600">${ex.name}</div><div class="muted">${impacts||'—'}</div>`;
     const right = document.createElement('div');
@@ -547,6 +593,10 @@ $('#logNowBtn')?.addEventListener('click',()=>{
     });
     right.appendChild(btn);
     row.appendChild(left); row.appendChild(right);
+
+    // Long‑press opens YouTube search for that exercise
+    attachLongPress(row, ()=> openYTSearch('correct form of '+ex.name));
+
     return row;
   }
 
