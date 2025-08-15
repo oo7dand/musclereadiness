@@ -776,6 +776,51 @@ $('#exerciseFilter')?.addEventListener('input', ()=> makeExerciseOptions());
   });
 })();
 </script>
+<script>
+/* Train tab: toggle the "Log workout" section with a single button */
+(function(){
+  const train = document.getElementById('train');
+  if (!train) return;
+
+  // The first card in #train is your Log workout block
+  const logCard = train.querySelector('.card');
+  if (!logCard) return;
+
+  // Insert a toggle button above the card
+  const bar = document.createElement('div');
+  bar.className = 'controls';
+  const btn = document.createElement('button');
+  btn.id = 'toggleLog';
+  btn.type = 'button';
+  btn.className = 'btn';
+  btn.textContent = 'Workout search';
+  bar.appendChild(btn);
+  train.insertBefore(bar, logCard);
+
+  // Persisted UI state (optional but nice)
+  const UIKEY = 'ui:logVisible';
+  const wasOpen = localStorage.getItem(UIKEY) === '1';
+
+  function setVisible(v){
+    logCard.style.display = v ? '' : 'none';
+    btn.textContent = v ? 'Hide workout search' : 'Workout search';
+    localStorage.setItem(UIKEY, v ? '1' : '0');
+    if (v) {
+      // Refresh dropdown/filter & focus
+      if (typeof makeExerciseOptions === 'function') makeExerciseOptions();
+      const filter = document.getElementById('exerciseFilter');
+      if (filter) { filter.focus(); filter.select?.(); }
+    }
+  }
+
+  // Initial state: hidden unless user had it open last time
+  setVisible(!!wasOpen);
+
+  // Toggle on click
+  btn.addEventListener('click', ()=> setVisible(logCard.style.display === 'none'));
+
+})();
+</script>
 
 </body>
 </html>
