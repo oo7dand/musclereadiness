@@ -821,6 +821,62 @@ $('#exerciseFilter')?.addEventListener('input', ()=> makeExerciseOptions());
 
 })();
 </script>
+<script>
+/* Fix Clear + add Max (full cooldown) on Readiness cards */
+(function(){
+  const train = document.getElementById('train');
+  if (!train) return;
+
+  // 1) Click handling for Clear / Max
+  train.addEventListener('click', (e)=>{
+    const btn = e.target.closest('button[data-action]');
+    if (!btn) return;
+
+    const id  = btn.getAttribute('data-id');
+    const act = btn.getAttribute('data-action');
+    if (!id || !act) return;
+
+    const m = (window.state?.muscles||[]).find(x=>x.id===id);
+    if (!m) return;
+
+    // setRemainingMs(ms): ms = desired remaining time in ms
+    if (act === 'clear') {
+      setRemainingMs(m, 0);                        // force Ready
+      m.lastWorkedAt = new Date().toISOString();   // touch history timestamp
+    } else if (act === 'max') {
+      setRemainingMs(m, h2ms(m.cooldown));         // full cooldown from now
+      m.lastWorkedAt = new Date().toISOString();
+    } else {
+      return;
+    }
+
+    save();
+    renderAll();
+  }, {capture:true});
+
+  // 2) Inject a "Max" button next to each Clear
+  function addMaxButtons(){
+    document.querySelectorAll('#cards .card').forEach(card=>{
+      const clearBtn = card.querySelector('button[data-action="clear"]');
+      if (!clearBtn) return;
+      if (card.querySelector('button[data-action="max"]')) return;
+
+      const maxBtn = clearBtn.cloneNode(true);
+      maxBtn.textContent = 'Max';
+      maxBtn.classList.remove('ghost');            // make it primary style
+      maxBtn.removeAttribute('disabled');
+      maxBtn.removeAttribute('aria-disabled');
+      maxBtn.setAttribute('data-action','max');
+      clearBtn.parentNode.appendChild(maxBtn);
+    });
+  }
+
+  // Run now and whenever the grid re-renders
+  addMaxButtons();
+  const grid = document.getElementById('cards');
+  if (grid) new MutationObserver(addMaxButtons).observe(grid, {childList:true, subtree:true});
+})();
+</script>
 
 </body>
 </html>
