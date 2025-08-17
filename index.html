@@ -822,73 +822,47 @@ $('#exerciseFilter')?.addEventListener('input', ()=> makeExerciseOptions());
 })();
 </script>
 <script>
-/* Fix Clear + hard-cap remaining at cooldown (no Max button) */
+/* Reliable Clear handler (force Ready = 0h) */
 (function(){
-  // 0) Remove any previously-injected "Max" buttons (if present)
-  document.querySelectorAll('#cards [data-action="max"]').forEach(b=>b.remove());
+  function onClear(e){
+    const btn = e.target.closest('button[data-action="clear"]');
+    if (!btn) return;
+    e.preventDefault(); e.stopPropagation();
 
-  // 1) Keep originals (if defined), then wrap with a cooldown cap
-  const _origRemMs = window.remMs;
-  const _origSetRemainingMs = window.setRemainingMs;
+    const id = btn.getAttribute('data-id');
+    const st = (window.state && window.state.muscles) ? window.state : null;
+    if (!st) return;
 
-  // Convert hours -> ms (already defined in your code)
-  const H2MS = window.h2ms || (h => Number(h||0)*3600000);
+    const m = window.state.muscles.find(x => x.id === id);
+    if (!m) return;
+    if (btn.hasAttribute('disabled')) return;
 
-  // Clamp remMs so UI never shows > cooldown
-  window.remMs = function(m){
-    const raw = _origRemMs ? _origRemMs(m) : 0;
-    const cd  = H2MS(m.cooldown);
-    if (!isFinite(raw)) return 0;
-    return Math.max(0, Math.min(raw, cd));
-  };
-
-  // Override setter: clamp any requests to > cooldown down to cooldown
-  window.setRemainingMs = function(m, ms){
-    const cd = H2MS(m.cooldown);
-    const clamped = Math.max(0, Math.min(Number(ms)||0, cd));
-    // Set lastAt so remaining becomes exactly `clamped`
-    const lastPrime = Date.now() + clamped - cd;
-    m.lastAt = new Date(lastPrime).toISOString();
-  };
-
-  // 2) Sanitize existing state (fix muscles already > cooldown)
-  (function clampAll(){
-    try{
-      let changed=false;
-      const muscles = (window.state?.muscles)||[];
-      muscles.forEach(m=>{
-        const cdMs = H2MS(m.cooldown);
-        // Compute raw remaining without our clamp to detect overshoot
-        const raw = (_origRemMs ? _origRemMs(m) : 0);
-        if (raw > cdMs + 500) { // small tolerance
-          window.setRemainingMs(m, cdMs);
-          changed = true;
-        }
-      });
-      if (changed) { window.save?.(); }
-    } catch {}
-  })();
-
-  // 3) Wire up the "Clear" buttons on Readiness cards
-  const grid = document.getElementById('cards');
-  if (grid){
-    grid.addEventListener('click', (e)=>{
-      const btn = e.target.closest('button[data-action="clear"]');
-      if (!btn) return;
-      const id = btn.getAttribute('data-id');
-      const m  = (window.state?.muscles||[]).find(x=>x.id===id);
-      if (!m) return;
-
-      // Force Ready (0h remaining), update lastWorkedAt stamp
+    // Force remaining to 0h
+    if (typeof window.setRemainingMs === 'function') {
       window.setRemainingMs(m, 0);
-      m.lastWorkedAt = new Date().toISOString();
+    } else {
+      // fallback: set lastAt so remaining=0
+      const cdMs = (typeof h2ms === 'function' ? h2ms(m.cooldown) : Number(m.cooldown||0)*3600000);
+      const lastPrime = Date.now() - cdMs;
+      m.lastAt = new Date(lastPrime).toISOString();
+    }
+    m.lastWorkedAt = new Date().toISOString();
 
-      window.save?.();
-      window.renderAll?.();
-    }, {capture:true});
+    if (typeof window.save === 'function') window.save();
+    if (typeof window.renderAll === 'function') window.renderAll();
+
+    // brief visual feedback
+    btn.textContent = 'Cleared';
+    setTimeout(()=>{ if (document.body.contains(btn)) btn.textContent = 'Clear'; }, 800);
   }
+
+  // Capture on document so it always fires, even if other handlers exist
+  document.addEventListener('click', onClear, true);
+
+  // If the DOM is re-rendered, nothing to rebind since we're on document.
 })();
 </script>
+
 
 
 </body>
