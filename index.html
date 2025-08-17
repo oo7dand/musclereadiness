@@ -797,7 +797,7 @@ $('#exerciseFilter')?.addEventListener('input', ()=> makeExerciseOptions());
   bar.appendChild(btn);
   train.insertBefore(bar, logCard);
 
-  // Persisted UI state (optional but nice)
+  // Persisted UI state
   const UIKEY = 'ui:logVisible';
   const wasOpen = localStorage.getItem(UIKEY) === '1';
 
@@ -806,22 +806,23 @@ $('#exerciseFilter')?.addEventListener('input', ()=> makeExerciseOptions());
     btn.textContent = v ? 'Hide workout search' : 'Workout search';
     localStorage.setItem(UIKEY, v ? '1' : '0');
     if (v) {
-      // Refresh dropdown/filter & focus
       if (typeof makeExerciseOptions === 'function') makeExerciseOptions();
       const filter = document.getElementById('exerciseFilter');
       if (filter) { filter.focus(); filter.select?.(); }
     }
   }
 
-  // Initial state: hidden unless user had it open last time
+  // Initial state
   setVisible(!!wasOpen);
 
   // Toggle on click
   btn.addEventListener('click', ()=> setVisible(logCard.style.display === 'none'));
-
 })();
+</script>
 
-  <script>
+<!-- ⬆️ CLOSE the previous <script> block. Start a NEW one for Clear: -->
+
+<script>
 /* Reliable Clear handler (force Ready = 0h) */
 (function(){
   function onClear(e){
@@ -830,18 +831,14 @@ $('#exerciseFilter')?.addEventListener('input', ()=> makeExerciseOptions());
     e.preventDefault(); e.stopPropagation();
 
     const id = btn.getAttribute('data-id');
-    const st = (window.state && window.state.muscles) ? window.state : null;
-    if (!st) return;
+    const m = (window.state?.muscles||[]).find(x => x.id === id);
+    if (!m || btn.hasAttribute('disabled')) return;
 
-    const m = window.state.muscles.find(x => x.id === id);
-    if (!m) return;
-    if (btn.hasAttribute('disabled')) return;
-
-    // Force remaining to 0h
+    // Force remaining to 0h (uses your existing setRemainingMs)
     if (typeof window.setRemainingMs === 'function') {
       window.setRemainingMs(m, 0);
     } else {
-      // fallback: set lastAt so remaining=0
+      // Fallback: compute lastAt so remaining=0
       const cdMs = (typeof h2ms === 'function' ? h2ms(m.cooldown) : Number(m.cooldown||0)*3600000);
       const lastPrime = Date.now() - cdMs;
       m.lastAt = new Date(lastPrime).toISOString();
@@ -856,15 +853,7 @@ $('#exerciseFilter')?.addEventListener('input', ()=> makeExerciseOptions());
     setTimeout(()=>{ if (document.body.contains(btn)) btn.textContent = 'Clear'; }, 800);
   }
 
-  // Capture on document so it always fires, even if other handlers exist
+  // Capture at document level so other handlers don’t swallow the click
   document.addEventListener('click', onClear, true);
-
-  // If the DOM is re-rendered, nothing to rebind since we're on document.
 })();
 </script>
-
-
-
-
-</body>
-</html>
