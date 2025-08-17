@@ -822,59 +822,71 @@ $('#exerciseFilter')?.addEventListener('input', ()=> makeExerciseOptions());
 })();
 </script>
 <script>
-/* Fix Clear + add Max (full cooldown) on Readiness cards */
+/* Fix Clear + hard-cap remaining at cooldown (no Max button) */
 (function(){
-  const train = document.getElementById('train');
-  if (!train) return;
+  // 0) Remove any previously-injected "Max" buttons (if present)
+  document.querySelectorAll('#cards [data-action="max"]').forEach(b=>b.remove());
 
-  // 1) Click handling for Clear / Max
-  train.addEventListener('click', (e)=>{
-    const btn = e.target.closest('button[data-action]');
-    if (!btn) return;
+  // 1) Keep originals (if defined), then wrap with a cooldown cap
+  const _origRemMs = window.remMs;
+  const _origSetRemainingMs = window.setRemainingMs;
 
-    const id  = btn.getAttribute('data-id');
-    const act = btn.getAttribute('data-action');
-    if (!id || !act) return;
+  // Convert hours -> ms (already defined in your code)
+  const H2MS = window.h2ms || (h => Number(h||0)*3600000);
 
-    const m = (window.state?.muscles||[]).find(x=>x.id===id);
-    if (!m) return;
+  // Clamp remMs so UI never shows > cooldown
+  window.remMs = function(m){
+    const raw = _origRemMs ? _origRemMs(m) : 0;
+    const cd  = H2MS(m.cooldown);
+    if (!isFinite(raw)) return 0;
+    return Math.max(0, Math.min(raw, cd));
+  };
 
-    // setRemainingMs(ms): ms = desired remaining time in ms
-    if (act === 'clear') {
-      setRemainingMs(m, 0);                        // force Ready
-      m.lastWorkedAt = new Date().toISOString();   // touch history timestamp
-    } else if (act === 'max') {
-      setRemainingMs(m, h2ms(m.cooldown));         // full cooldown from now
-      m.lastWorkedAt = new Date().toISOString();
-    } else {
-      return;
-    }
+  // Override setter: clamp any requests to > cooldown down to cooldown
+  window.setRemainingMs = function(m, ms){
+    const cd = H2MS(m.cooldown);
+    const clamped = Math.max(0, Math.min(Number(ms)||0, cd));
+    // Set lastAt so remaining becomes exactly `clamped`
+    const lastPrime = Date.now() + clamped - cd;
+    m.lastAt = new Date(lastPrime).toISOString();
+  };
 
-    save();
-    renderAll();
-  }, {capture:true});
+  // 2) Sanitize existing state (fix muscles already > cooldown)
+  (function clampAll(){
+    try{
+      let changed=false;
+      const muscles = (window.state?.muscles)||[];
+      muscles.forEach(m=>{
+        const cdMs = H2MS(m.cooldown);
+        // Compute raw remaining without our clamp to detect overshoot
+        const raw = (_origRemMs ? _origRemMs(m) : 0);
+        if (raw > cdMs + 500) { // small tolerance
+          window.setRemainingMs(m, cdMs);
+          changed = true;
+        }
+      });
+      if (changed) { window.save?.(); }
+    } catch {}
+  })();
 
-  // 2) Inject a "Max" button next to each Clear
-  function addMaxButtons(){
-    document.querySelectorAll('#cards .card').forEach(card=>{
-      const clearBtn = card.querySelector('button[data-action="clear"]');
-      if (!clearBtn) return;
-      if (card.querySelector('button[data-action="max"]')) return;
-
-      const maxBtn = clearBtn.cloneNode(true);
-      maxBtn.textContent = 'Max';
-      maxBtn.classList.remove('ghost');            // make it primary style
-      maxBtn.removeAttribute('disabled');
-      maxBtn.removeAttribute('aria-disabled');
-      maxBtn.setAttribute('data-action','max');
-      clearBtn.parentNode.appendChild(maxBtn);
-    });
-  }
-
-  // Run now and whenever the grid re-renders
-  addMaxButtons();
+  // 3) Wire up the "Clear" buttons on Readiness cards
   const grid = document.getElementById('cards');
-  if (grid) new MutationObserver(addMaxButtons).observe(grid, {childList:true, subtree:true});
+  if (grid){
+    grid.addEventListener('click', (e)=>{
+      const btn = e.target.closest('button[data-action="clear"]');
+      if (!btn) return;
+      const id = btn.getAttribute('data-id');
+      const m  = (window.state?.muscles||[]).find(x=>x.id===id);
+      if (!m) return;
+
+      // Force Ready (0h remaining), update lastWorkedAt stamp
+      window.setRemainingMs(m, 0);
+      m.lastWorkedAt = new Date().toISOString();
+
+      window.save?.();
+      window.renderAll?.();
+    }, {capture:true});
+  }
 })();
 </script>
 
